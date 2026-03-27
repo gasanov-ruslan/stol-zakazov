@@ -1,13 +1,13 @@
 # .github/workflows/reconcile.yml
-# Ежедневная сверка заявок с фидом наличия.
+# Ежедневная сверка заявок + обновление каталога формы.
 # Запускается в 06:00 UTC (09:00 МСК) каждый день.
 
 name: Daily Reconciliation
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # 06:00 UTC = 09:00 MSK
-  workflow_dispatch:       # Ручной запуск через GitHub UI
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 jobs:
   reconcile:
@@ -33,3 +33,18 @@ jobs:
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: python reconcile.py
+
+      - name: Update catalog from feed
+        env:
+          FEED_URL: ${{ secrets.FEED_URL }}
+        run: python generate_catalog.py --url "${FEED_URL}" --output catalog.json
+
+      - name: Commit catalog if changed
+        run: |
+          git diff --quiet catalog.json 2>/dev/null && echo "No catalog changes" || {
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add catalog.json
+            git commit -m "chore: update catalog from feed [$(date -u +%Y-%m-%d)]"
+            git push
+          }
