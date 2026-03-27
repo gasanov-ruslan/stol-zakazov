@@ -230,10 +230,11 @@ def main():
     print(f"Orders loaded: {len(rows)} rows")
 
     # 3. Обрабатываем
-    updates = []        # Пакетные обновления ячеек
-    matched_orders = []  # Для Telegram-отчёта
-    expired_orders = []  # Просроченные
-    waiting_count = 0    # Счётчик ожидающих
+    updates = []
+
+    # Группировка по клиенту: ключ = (client_name, contact_type, contact_nick, contact_phone, category, generation, restyling)
+    # Значение = список найденных деталей
+    clients = {}
 
     for i, row in enumerate(rows):
         status = get_cell(row, COL["status"])
@@ -247,70 +248,99 @@ def main():
         contact_nick = get_cell(row, COL["contact_nick"])
         contact_phone = get_cell(row, COL["contact_phone"])
         category = get_cell(row, COL["category"])
+        year = get_cell(row, COL["year"])
+        generation = get_cell(row, COL["generation"])
+        restyling = get_cell(row, COL["restyling"])
         part_name = get_cell(row, COL["part_name"])
         position = get_cell(row, COL["position"])
         wait_until = get_cell(row, COL["wait_until"])
         excluded_ids = get_cell(row, COL["excluded_ids"])
-
-        contact = contact_nick or contact_phone or "—"
 
         # Проверяем просрочку
         if wait_until:
             try:
                 if date.fromisoformat(wait_until) < date.today():
                     updates.append({"row": i, "col": COL["status"], "value": "Просрочено"})
-                    expired_orders.append(f"  {order_id}: {client_name} — {part_name} ({category})")
                     continue
             except ValueError:
-                pass  # Некорректная дата — пропускаем проверку
+                pass
 
         # Ищем совпадения в фиде
         matches = find_matches(category, part_name, excluded_ids, feed_items)
 
         if matches:
-            # Обновляем статус и дату
             updates.append({"row": i, "col": COL["status"], "value": "Найдено — связаться"})
             updates.append({"row": i, "col": COL["matched_at"], "value": today})
 
-            # Формируем блок для Telegram
+            # Ключ группировки — клиент + авто
+            client_key = (client_name, contact_type, contact_nick, contact_phone, category, year, generation, restyling)
+
+            if client_key not in clients:
+                clients[client_key] = []
+
             part_display = part_name
             if position:
                 part_display += f" ({position})"
 
-            block = f"🔔 <b>{client_name}</b> — {part_display}\n"
-            block += f"   {contact_type}: {contact}\n"
-            block += f"   Авто: {category}\n"
-
+            part_block = f"🔔 {part_display}\n"
             for m in matches:
                 price_str = f"{m['price']} ₽" if m["price"] else "цена не указана"
-                block += f"   • <a href=\"{m['url']}\">{m['description'][:80]}</a> — {price_str}\n"
+                desc_short = m["description"][:80]
+                part_block += f"• <a href=\"{m['url']}\">{desc_short}</a>\n  {price_str}\n"
 
-            matched_orders.append(block)
-        else:
-            waiting_count += 1
+            clients[client_key].append(part_block)
 
     # 4. Применяем обновления пакетно
     if updates:
         print(f"Applying {len(updates)} updates...")
         batch_update_cells(service, updates)
 
-    # 5. Формируем и отправляем сводку в Telegram
-    print(f"Results: {len(matched_orders)} matched, {len(expired_orders)} expired, {waiting_count} waiting")
+    # 5. Формируем сводку в Telegram
+    print(f"Results: {len(clients)} clients with matches")
+
+    if not clients:
+        split_and_send_telegram("Сегодня новых совпадений нет. Хорошего дня! ✌️")
+        print("Done! No matches.")
+        return
 
     msg_parts = []
-    msg_parts.append(f"📋 <b>Сверка заявок — {today}</b>\n")
+    msg_parts.append(f"Всем привет! Для <b>{len(clients)}</b> клиентов появились детали, они их ждут. Свяжитесь с ними сегодня! 🚗\n")
 
-    if matched_orders:
-        msg_parts.append(f"✅ <b>Найдено совпадений: {len(matched_orders)}</b>\n")
-        msg_parts.extend(matched_orders)
-    else:
-        msg_parts.append("Новых совпадений нет.\n")
+    for client_key, parts in clients.items():
+        client_name, contact_type, contact_nick, contact_phone, category, year, generation, restyling = client_key
 
-    if expired_orders:
-        msg_parts.append(f"\n⏰ <b>Просрочено: {len(expired_orders)}</b>")
-        msg_parts.extend(expired_orders)
+        msg_parts.append("━━━━━━━━━━━━━━━━━━━━━\n")
 
-    msg_parts.append(f"\n📊 Ожидают деталь: {waiting_count}")
+        # Клиент
+        msg_parts.append(f"👤 <b>{client_name}</b>")
+
+        # Контакты — всегда показываем оба если есть
+        contact_parts = []
+        if contact_nick:
+            contact_parts.append(f"{contact_type}: {contact_nick}")
+        if contact_phone:
+            contact_parts.append(f"Тел: {contact_phone}")
+        if contact_parts:
+            msg_parts.append(" | ".join(contact_parts))
+        else:
+            msg_parts.append("Контакт не указан")
+
+        # Авто — одна строка
+        car = category
+        if year:
+            car += f" {year}"
+        if generation:
+            car += f", {generation} поколение"
+        if restyling:
+            car += f", {restyling}"
+        msg_parts.append(car + "\n")
+
+        # Детали
+        for part_block in parts:
+            msg_parts.append(part_block)
+
+    msg_parts.append("━━━━━━━━━━━━━━━━━━━━━\n")
+    msg_parts.append("Хорошего дня! ✌️")
 
     full_message = "\n".join(msg_parts)
     split_and_send_telegram(full_message)
