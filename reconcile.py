@@ -143,13 +143,75 @@ def download_feed():
 # Матчинг
 # ═══════════════════════════════════════════
 
-def find_matches(order_category, order_part_name, excluded_ids_str, feed_items):
+def parse_feed_position(description):
+    """
+    Извлекает позицию из первой строки description.
+    Возвращает нормализованную строку или пустую если позиции нет.
+    Примеры: 'перед. прав.' → 'передний правый', 'задн. лев.' → 'задний левый'
+    """
+    import re
+    desc = description.lower()
+
+    # Маппинг сокращений из фида на нормализованные значения
+    front = bool(re.search(r'перед\.', desc))
+    rear = bool(re.search(r'задн\.', desc))
+    left = bool(re.search(r'лев\.', desc))
+    right = bool(re.search(r'прав\.', desc))
+
+    parts = []
+    if front:
+        parts.append("передний")
+    elif rear:
+        parts.append("задний")
+    if left:
+        parts.append("левый")
+    elif right:
+        parts.append("правый")
+
+    return " ".join(parts)
+
+
+def position_matches(order_position, feed_position):
+    """
+    Проверяет совместимость позиции заявки и товара из фида.
+
+    Логика:
+    - Клиент не указал позицию → показываем всё
+    - У товара нет позиции → показываем всегда (деталь без стороны)
+    - Клиент указал 'Передний' → подходит 'передний', 'передний левый', 'передний правый'
+    - Клиент указал 'Передний правый' → подходит только 'передний правый'
+    - Клиент указал 'Левый' → подходит 'левый', 'передний левый', 'задний левый'
+    """
+    if not order_position:
+        return True
+    if not feed_position:
+        return True
+
+    op = order_position.lower()
+    fp = feed_position.lower()
+
+    # Точное совпадение
+    if op == fp:
+        return True
+
+    # Клиент указал только направление (передний/задний) — подходит любая сторона этого направления
+    if op in ("передний", "задний"):
+        return fp.startswith(op)
+
+    # Клиент указал только сторону (левый/правый) — подходит любое направление этой стороны
+    if op in ("левый", "правый"):
+        return fp.endswith(op)
+
+    return False
+
+
+def find_matches(order_category, order_part_name, order_position, excluded_ids_str, feed_items):
     """
     Ищет совпадения по category + name в фиде.
+    Фильтрует по позиции (если указана).
     Исключает товары из excluded_ids.
     Возвращает список совпавших товаров.
     """
-    # Парсим excluded_ids
     excluded = set()
     if excluded_ids_str:
         for eid in excluded_ids_str.split(","):
@@ -163,7 +225,10 @@ def find_matches(order_category, order_part_name, excluded_ids_str, feed_items):
             continue
         if (item["category"].lower() == order_category.lower() and
                 item["name"].lower() == order_part_name.lower()):
-            matches.append(item)
+            # Проверяем позицию
+            feed_pos = parse_feed_position(item["description"])
+            if position_matches(order_position, feed_pos):
+                matches.append(item)
 
     return matches
 
@@ -266,7 +331,7 @@ def main():
                 pass
 
         # Ищем совпадения в фиде
-        matches = find_matches(category, part_name, excluded_ids, feed_items)
+        matches = find_matches(category, part_name, position, excluded_ids, feed_items)
 
         if matches:
             updates.append({"row": i, "col": COL["status"], "value": "Найдено — связаться"})
