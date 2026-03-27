@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Стол заказов — Разбор Ангар</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f4f1ec; --surface: #fff; --border: #d4cfc7; --text: #1a1a1a; --text-muted: #6b6560;
+    --brand: #3cb432; --brand-dark: #2e8a26; --brand-light: #f0f9ef; --tag-bg: #eae6df;
+    --red: #c8102e; --radius: 10px; --shadow: 0 1px 3px rgba(0,0,0,0.06); --shadow-lg: 0 8px 24px rgba(0,0,0,0.08);
+  }
+  html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+  body { font-family: 'Onest', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
+
+  .header { background: var(--brand); color: #fff; padding: 20px 24px; text-align: center; }
+  .header h1 { font-size: 1.25rem; font-weight: 600; }
+  .header p { font-size: 0.8rem; opacity: 0.75; margin-top: 4px; }
+
+  /* ── Side progress ── */
+  .side-progress {
+    position: fixed; top: 50%; right: 16px; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 0; z-index: 50;
+    background: var(--surface); border-radius: 12px; padding: 12px 10px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  .sp-step {
+    display: flex; align-items: center; gap: 8px; padding: 8px 4px;
+    position: relative;
+  }
+  .sp-step:not(:last-child)::after {
+    content: ''; position: absolute; left: 13px; top: 28px;
+    width: 2px; height: calc(100% - 12px); background: var(--tag-bg);
+  }
+  .sp-step.done:not(:last-child)::after { background: var(--brand); }
+  .sp-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid var(--border); background: var(--surface); transition: all 0.3s;
+    position: relative; z-index: 1;
+  }
+  .sp-step.active .sp-dot { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(60,180,50,0.18); }
+  .sp-step.done .sp-dot { border-color: var(--brand); background: var(--brand); }
+  .sp-label { font-size: 0.68rem; font-weight: 500; color: var(--border); white-space: nowrap; transition: color 0.3s; }
+  .sp-step.active .sp-label { color: var(--brand); font-weight: 600; }
+  .sp-step.done .sp-label { color: var(--brand); }
+
+  @media (max-width: 700px) {
+    .side-progress { right: 8px; padding: 8px 6px; }
+    .sp-label { display: none; }
+    .sp-step { padding: 6px 2px; }
+  }
+
+  .container { max-width: 560px; margin: 0 auto; padding: 20px 16px 40px; }
+  .section-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 12px; margin-top: 28px; }
+  .section-label:first-child { margin-top: 0; }
+  .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 12px; }
+
+  label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+  label .optional { color: var(--text-muted); font-weight: 400; }
+  .field { margin-bottom: 16px; }
+  .field:last-child { margin-bottom: 0; }
+
+  input[type="text"], input[type="tel"], input[type="number"], input[type="date"], textarea, select {
+    width: 100%; padding: 10px 12px; font-family: 'Onest', sans-serif; font-size: 0.9rem;
+    border: 1.5px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+    transition: border-color 0.15s, box-shadow 0.15s; outline: none; -webkit-appearance: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(60,180,50,0.12); }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6560' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  textarea { resize: vertical; min-height: 56px; }
+  input::placeholder, textarea::placeholder { color: var(--border); }
+  select:disabled, input:disabled, textarea:disabled { background: #f9f7f4; color: var(--text-muted); cursor: not-allowed; }
+
+  .field-hint { font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; }
+
+  .pill-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill-group input[type="radio"] { display: none; }
+  .pill-group label.pill { flex: 1; text-align: center; padding: 10px 8px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 0.82rem; font-weight: 500; cursor: pointer; transition: all 0.15s; margin-bottom: 0; }
+  .pill-group input:checked + label.pill { border-color: var(--brand); background: var(--brand); color: #fff; }
+
+  .field-row { display: flex; gap: 12px; }
+  .field-row > .field { flex: 1; }
+  .contact-block { margin-top: 12px; }
+
+  .autocomplete-wrap { position: relative; }
+  .autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1.5px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; max-height: 220px; overflow-y: auto; z-index: 100; box-shadow: var(--shadow-lg); display: none; }
+  .autocomplete-list.open { display: block; }
+  .autocomplete-item { padding: 10px 12px; font-size: 0.85rem; cursor: pointer; border-bottom: 1px solid #f0ece6; }
+  .autocomplete-item:last-child { border-bottom: none; }
+  .autocomplete-item:hover, .autocomplete-item.active { background: var(--brand-light); }
+  .autocomplete-item mark { background: none; color: var(--brand); font-weight: 600; }
+
+  .parts-list { margin-bottom: 16px; }
+  .part-chip { display: flex; align-items: center; gap: 10px; background: var(--tag-bg); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 0.82rem; animation: chipIn 0.2s ease; }
+  @keyframes chipIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  .part-chip .info { flex: 1; }
+  .part-chip .info strong { font-weight: 600; }
+  .part-chip .info span { display: block; color: var(--text-muted); font-size: 0.75rem; margin-top: 2px; }
+  .part-chip .qty { font-weight: 600; font-size: 0.75rem; background: var(--surface); padding: 3px 8px; border-radius: 5px; white-space: nowrap; }
+  .part-chip .remove-part { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1.1rem; padding: 0 2px; line-height: 1; }
+  .part-chip .remove-part:hover { color: var(--red); }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; font-family: 'Onest', sans-serif; font-size: 0.85rem; font-weight: 600; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; }
+  .btn-secondary { background: var(--tag-bg); color: var(--text); width: 100%; }
+  .btn-secondary:hover { background: #ddd8cf; }
+  .btn-add { background: var(--tag-bg); color: var(--text); width: 100%; border: 2px dashed var(--border); }
+  .btn-add:hover { background: #ddd8cf; }
+  .btn-add:not(:disabled) { background: var(--brand-light); color: var(--brand-dark); border: 2px solid var(--brand); font-weight: 700; }
+  .btn-add:not(:disabled):hover { background: var(--brand); color: #fff; }
+  .btn-primary { background: var(--brand); color: #fff; width: 100%; padding: 14px 18px; font-size: 0.95rem; border-radius: var(--radius); }
+  .btn-primary:hover { background: var(--brand-dark); }
+  .btn-primary:disabled { background: var(--border); cursor: not-allowed; }
+
+  .consent { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; margin-bottom: 16px; font-size: 0.78rem; color: var(--text-muted); }
+  .consent input[type="checkbox"] { margin-top: 2px; accent-color: var(--brand); width: 16px; height: 16px; flex-shrink: 0; }
+  .consent a { color: var(--brand); text-decoration: underline; }
+
+  .success-screen { display: none; text-align: center; padding: 60px 20px; }
+  .success-screen.show { display: block; }
+  .success-icon { width: 64px; height: 64px; background: var(--brand-light); color: var(--brand); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 28px; }
+  .success-screen h2 { font-size: 1.2rem; font-weight: 600; margin-bottom: 8px; }
+  .success-screen p { color: var(--text-muted); font-size: 0.85rem; max-width: 320px; margin: 0 auto 24px; }
+  .success-details { background: var(--tag-bg); border-radius: var(--radius); padding: 16px; text-align: left; font-size: 0.8rem; margin-bottom: 24px; max-width: 400px; margin-left: auto; margin-right: auto; }
+  .success-details .row { display: flex; justify-content: space-between; padding: 4px 0; gap: 12px; }
+  .success-details .row .lbl { color: var(--text-muted); white-space: nowrap; }
+  .success-details .row .val { font-weight: 600; text-align: right; }
+
+  .loading-overlay { display: none; position: fixed; inset: 0; background: rgba(244,241,236,0.85); z-index: 999; align-items: center; justify-content: center; }
+  .loading-overlay.show { display: flex; }
+  .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--brand); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--text); color: #fff; padding: 12px 20px; border-radius: 10px; font-size: 0.82rem; z-index: 1000; transition: transform 0.3s ease; max-width: 90%; text-align: center; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .form-screen { display: block; }
+  .form-screen.hidden { display: none; }
+
+  @media (max-width: 420px) {
+    .container { padding: 16px 12px 32px; }
+    .card { padding: 16px; }
+    .pill-group label.pill { font-size: 0.75rem; padding: 9px 4px; }
+    .field-row { flex-direction: column; gap: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Заказ автозапчастей</h1>
+  <p>Разбор Ангар — б/у запчасти в наличии</p>
+</div>
+
+<!-- ═══ SIDE PROGRESS ═══ -->
+<div class="side-progress" id="sideProgress">
+  <div class="sp-step done" id="ps1"><span class="sp-dot"></span><span class="sp-label">Контакт</span></div>
+  <div class="sp-step" id="ps2"><span class="sp-dot"></span><span class="sp-label">Авто</span></div>
+  <div class="sp-step" id="ps3"><span class="sp-dot"></span><span class="sp-label">Детали</span></div>
+  <div class="sp-step" id="ps4"><span class="sp-dot"></span><span class="sp-label">Готово</span></div>
+</div>
+
+<div class="container form-screen" id="formScreen">
+
+  <!-- ═══ BLOCK 1 ═══ -->
+  <div class="section-label">Контактные данные</div>
+  <div class="card">
+    <div class="field">
+      <label for="clientName">Имя</label>
+      <input type="text" id="clientName" placeholder="Как к вам обращаться">
+    </div>
+    <div class="field">
+      <label>Способ связи</label>
+      <div class="pill-group">
+        <input type="radio" name="contactType" id="ctTelegram" value="Telegram" checked>
+        <label class="pill" for="ctTelegram">Telegram</label>
+        <input type="radio" name="contactType" id="ctWhatsApp" value="WhatsApp">
+        <label class="pill" for="ctWhatsApp">WhatsApp</label>
+        <input type="radio" name="contactType" id="ctVK" value="VK">
+        <label class="pill" for="ctVK">VK</label>
+        <input type="radio" name="contactType" id="ctMAX" value="MAX">
+        <label class="pill" for="ctMAX">MAX</label>
+        <input type="radio" name="contactType" id="ctPhone" value="Телефон">
+        <label class="pill" for="ctPhone">Телефон</label>
+      </div>
+    </div>
+    <div class="contact-block" id="contactBlockNick">
+      <div class="field">
+        <label for="contactNick">Ник в мессенджере <span class="optional">(необязательно)</span></label>
+        <input type="text" id="contactNick" placeholder="@username">
+      </div>
+      <div class="field">
+        <label for="contactPhoneAlt">Телефон <span class="optional">(необязательно)</span></label>
+        <input type="tel" id="contactPhoneAlt" placeholder="+7 (___) ___-__-__" inputmode="tel">
+        <div class="field-hint">Укажите ник, телефон или оба</div>
+      </div>
+    </div>
+    <div class="contact-block" id="contactBlockPhone" style="display:none;">
+      <div class="field">
+        <label for="contactPhone">Телефон</label>
+        <input type="tel" id="contactPhone" placeholder="+7 (___) ___-__-__" inputmode="tel">
+      </div>
+    </div>
+    <div class="field">
+      <label for="waitUntil">Заявка актуальна до <span class="optional">(необязательно)</span></label>
+      <input type="date" id="waitUntil">
+      <div class="field-hint">По умолчанию — 3 месяца</div>
+    </div>
+  </div>
+
+  <!-- ═══ BLOCK 2 ═══ -->
+  <div class="section-label">Автомобиль</div>
+  <div class="card">
+    <div class="field-row">
+      <div class="field">
+        <label for="brandSelect">Марка</label>
+        <select id="brandSelect"><option value="">Выберите</option></select>
+      </div>
+      <div class="field">
+        <label for="modelSelect">Модель</label>
+        <select id="modelSelect" disabled><option value="">—</option></select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="yearInput">Год <span class="optional">(необяз.)</span></label>
+        <input type="number" id="yearInput" placeholder="2015" min="1980" max="2026">
+      </div>
+      <div class="field">
+        <label for="genSelect">Поколение <span class="optional">(необяз.)</span></label>
+        <select id="genSelect">
+          <option value="">—</option>
+          <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+          <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+          <option value="10">10</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="restylingSelect">Рестайлинг <span class="optional">(необяз.)</span></label>
+      <select id="restylingSelect">
+        <option value="">—</option>
+        <option value="Дорестайлинг">Дорестайлинг</option>
+        <option value="Рестайлинг">Рестайлинг</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="vinInput">VIN <span class="optional">(необязательно)</span></label>
+      <input type="text" id="vinInput" placeholder="JMBXNGA5AWZ000123" maxlength="17" style="text-transform:uppercase;">
+      <div class="field-hint">17 символов. Позволит подобрать деталь с гарантией совместимости с вашим авто</div>
+    </div>
+  </div>
+
+  <!-- ═══ BLOCK 3 ═══ -->
+  <div class="section-label">Детали</div>
+  <div class="parts-list" id="partsList"></div>
+  <div class="card" id="partInputCard">
+    <div class="field">
+      <label for="partInput">Деталь</label>
+      <div class="autocomplete-wrap">
+        <input type="text" id="partInput" placeholder="Начните вводить название" disabled>
+        <div class="autocomplete-list" id="partDropdown"></div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="positionSelect">Расположение</label>
+        <select id="positionSelect" disabled>
+          <option value="">— Не важно</option>
+          <option value="Передний">Передний</option>
+          <option value="Задний">Задний</option>
+          <option value="Левый">Левый</option>
+          <option value="Правый">Правый</option>
+          <option value="Передний левый">Передний левый</option>
+          <option value="Передний правый">Передний правый</option>
+          <option value="Задний левый">Задний левый</option>
+          <option value="Задний правый">Задний правый</option>
+        </select>
+      </div>
+      <div class="field" style="max-width:100px;">
+        <label for="qtyInput">Кол-во</label>
+        <input type="number" id="qtyInput" value="1" min="1" max="99" disabled>
+      </div>
+    </div>
+    <div class="field">
+      <label for="catNumInput">Каталожный номер <span class="optional">(если знаете)</span></label>
+      <input type="text" id="catNumInput" placeholder="OEM / артикул" disabled>
+    </div>
+    <div class="field">
+      <label for="commentInput">Комментарий <span class="optional">(необязательно)</span></label>
+      <textarea id="commentInput" placeholder="Без трещин, цвет чёрный, с ABS..." disabled></textarea>
+    </div>
+    <button class="btn btn-add" id="addPartBtn" disabled>Добавить деталь в заявку</button>
+    <div class="field-hint" style="text-align:center; margin-top:8px;">Нажмите, чтобы деталь попала в заявку. Можно добавить несколько деталей</div>
+  </div>
+
+  <div class="consent">
+    <input type="checkbox" id="consentCheck">
+    <label for="consentCheck" style="font-size:0.78rem; font-weight:400; margin-bottom:0;">
+      Я согласен на <a href="https://razbor-angar.ru/consent/" target="_blank">обработку персональных данных</a>
+    </label>
+  </div>
+  <button class="btn btn-primary" id="submitBtn" disabled>Отправить заявку</button>
+</div>
+
+<div class="container success-screen" id="successScreen">
+  <div class="success-icon">✓</div>
+  <h2>Заявка отправлена</h2>
+  <p>Мы проверяем наличие ежедневно. Свяжемся с вами, как только деталь появится на складе.</p>
+  <div class="success-details" id="successDetails"></div>
+  <button class="btn btn-secondary" onclick="resetForm()">Новая заявка</button>
+</div>
+<div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyZnbw8BsdHmPmHik2hoCDOuwX9eQUOdN0fKUl-7OQMoqCHnkj_Bj8AjP_PRFNXi8iB/exec';
+const FORM_TOKEN = '2OZKvtH2xBuzqsnUHZhm7b8zmWvCcE2P'; // TODO: тот же токен что в Apps Script
+const catalog = {"generated":"2026-03-26","feed_url":"https://baz-on.ru/export/c1326/5edf4/razborangar-socposter.csv","brands":[{"name":"Audi","models":[{"category":"AUDI A1","parts":["Вакуумный насос тормозов","Вентилятор охлаждения радиатора","Дверь боковая","Зеркало заднего вида боковое","Повторитель поворота в зеркало","Подушка безопасности в руль","Ручка КПП","Сабвуфер","Суппорт тормозной","Шлейф-лента подушки безопасности","ЭУР Электро усилитель руля","бампер","блок АБС","блок управления (печкой) климат контролем","замок зажигания","капот","крыло","крышка багажника","мотор дворников","накладка на зеркало","панель приборов","подкрылок","подушка двигателя","привод","радиатор кондиционера","радиатор охлаждения двигателя","рамка радиатора","трубка кондиционера","фара","фары","фонарь в крышку багажника"]},{"category":"AUDI A3","parts":["воздухозаборник","привод","рамка радиатора","усилитель бампера"]},{"category":"AUDI A5","parts":["Дверь боковая","Зеркало заднего вида боковое","Кулак поворотный","Патрубок интеркулера","Шлейф-лента подушки безопасности","капот","кнопка открывания багажника","подушка двигателя","привод","фонарь в крыло"]},{"category":"Audi A8","parts":["бачок расширительный"]},{"category":"Audi Q3","parts":["зеркало салона"]}]},{"name":"BMW","models":[{"category":"BMW 3-Series","parts":["CD-чейнджер","Блок управления SRS","Вакуумный усилитель тормозов","Вентилятор охлаждения радиатора","Датчик давления в шинах","Дверь боковая","Джойстик магнитолы","Зеркало заднего вида боковое","Козырек солнцезащитный","Кулак поворотный","Патрубок интеркулера","Патрубок системы охлаждения","Плафон подсветки салона","Подушка безопасности в руль","Потолок","Проводка ( коса )","Рамка радиатора верхняя","Реле накала свечей","Стекло двери","Стеклоподъемный механизм","Суппорт тормозной","бампер","бархотка ( молдинг стекла двери )","бачок омывателя","бачок расширительный","блок АБС","блок комфорта","блок предохранителей","блок управления (печкой) климат контролем","блок управления вентилятором","бортовой компьютер","глушитель","датчик абсолютного давления","динамик","дроссельная заслонка","замок багажника","замок зажигания","замок капота","карданный вал","клапан","клемма аккумулятора","компрессор кондиционера","корпус термостата","крепление бампера","крепление фары","кронштейн опоры","мотор печки","накладка на порог","панель приборов","папка под документы","петля двери","петля капота","подкрылок","подрамник ( балка )","подушка безопасности пассажира","пол багажника, фальшпол","привод","пружина подвески","радиатор охлаждения двигателя","рамка радиатора","редуктор","резистор печки","ремень безопасности","руль","ручка двери внешняя","рычаг подвески","стабилизатор","стартер","ступица","топливная рампа в сборе","трубка кондиционера","трубка топливная","турбокомпрессор","усилитель бампера","фара противотуманная","форсунка"]},{"category":"BMW X3 E83","parts":["бампер","капот","крыло","рамка радиатора","фара"]},{"category":"BMW X5","parts":["Блок управления стеклоподъемниками","Вентилятор охлаждения радиатора","Датчик высоты дорожного просвета","Дверь боковая","Жгут проводки двигателя","Кулак поворотный","Насос гидроусилителя руля","Привод заслонки впускного коллектора","Резонатор воздушного фильтра","Ручка двери багажника","Стеклоподъемный механизм","Трос замка двери","бампер","бачок расширительный","блок управления двигателем (ЭБУ)","датчик давления тормозной системы","датчик холостого хода","дроссельная заслонка","замок багажника","замок двери","коллектор впускной","компрессор кондиционера","корпус масляного фильтра","корпус термостата","магнитола","мотор дворников","накладка на бампер","привод","радиатор кондиционера","радиатор охлаждения двигателя","раздаточная коробка","редуктор","ручка двери внешняя","селектор акпп","стабилизатор","стартер","стойка подвески","топливная рампа","трапеция дворников","трубка кондиционера"]}]},{"name":"Citroën","models":[{"category":"Citroen C4","parts":["Маховик МКПП","Подушка безопасности в руль","Резистор вентилятора охлаждения","абсорбер бампера","блок предохранителей","блок управления двигателем (ЭБУ)","главный тормозной цилиндр","датчик кислородный","корпус масляного фильтра","планка под радиаторы (траверса)","привод","радиатор охлаждения двигателя","ролик натяжной","топливная рампа в сборе"]}]},{"name":"Dodge","models":[{"category":"Dodge Caliber","parts":["Вентилятор охлаждения радиатора","Докатка","Клапан VVT-i","Молдинг крыши","Насос гидроусилителя руля","Обшивка боковой двери","Подушка АКПП","Подушка безопасности боковая","Подушка безопасности в руль","Рамка радиатора верхняя","Трубка масляная","Шлейф-лента подушки безопасности","абсорбер бампера","бампер","бачок расширительный","блок предохранителей","блок управления двигателем (ЭБУ)","главный тормозной цилиндр","датчик кислородный","дроссельная заслонка","защита двигателя","капот","клапан электромагнитный","кнопки руля ( аудио )","компрессор кондиционера","крыло","магнитола","мотор печки","накладка на крыло","обшивка багажника","обшивка капота","осушитель кондиционера","переключатель круиз-контроля","петля капота","повторитель в крыло","подкрылок","подушка безопасности пассажира","подушка двигателя","привод","радиатор масляный","радиатор охлаждения двигателя","рамка радиатора","ремень безопасности","решетка радиатора","руль","скоба буксировочная","спойлер","стартер","термостат","топливная рампа в сборе","трубка кондиционера","фара","фара противотуманная","шторка багажника"]}]},{"name":"Ford","models":[{"category":"Ford C-MAX","parts":["Подушка безопасности в руль","блок управления двигателем (ЭБУ)","замок зажигания","радиатор охлаждения двигателя"]},{"category":"Ford EXPLORER","parts":["АКПП","Блок управления","Блок управления стеклоподъемниками","Вентилятор охлаждения радиатора","Дверь боковая","Диск тормозной","Кулак поворотный","Накладка крышки багажника","Подушка безопасности в руль","Стекло двери","Стеклоподъемный механизм","Суппорт тормозной","бампер","блок АБС","блок управления двигателем (ЭБУ)","бортовой компьютер","воздухозаборник","генератор","главный тормозной цилиндр","датчик abs","двигатель","дроссельная заслонка","замок двери","капот","катушка зажигания","компрессор кондиционера","крыло","крышка багажника","магнитола","мотор дворников","панель приборов","подрамник ( балка )","привод","радиатор кондиционера","радиатор охлаждения двигателя","рамка радиатора","решетка радиатора","рулевая рейка","руль","ручка двери внешняя","рычаг подвески","стартер","стойка подвески","топливная рампа","фара","фара противотуманная","фонарь в крыло"]},{"category":"Ford Focus","parts":["Бардачок под очки","Бачок гидроусилителя руля","Блок Bluetooth","Вентилятор охлаждения радиатора","Воздуховод воздушного фильтра","ДМРВ","Дверь боковая","Дефлектор радиатора","Докатка","Замок ремня безопасности","Звуковой сигнал","Зеркало заднего вида боковое","Клапан паров топлива","Клапан продувки адсорбера","Кожух ремня ГРМ","Короб аккумулятора","Кронштейн двигателя","Крышка головки блока цилиндров","Кулак поворотный","Лючок топливного бака","Масляный насос","Молдинг крыши","Насос гидроусилителя руля","Патрубок системы охлаждения","Поводок щетки стеклоочистителя","Поддон двигателя","Подушка безопасности в сиденье","Проводка ( коса )","Рамка радиатора верхняя","Ручка КПП","Суппорт тормозной","Трубка системы охлаждения","Фильтр топливный","Фонарь противотуманный","Шлейф-лента подушки безопасности","ЭУР Электро усилитель руля","арка крыла","бампер","бачок расширительный","бензонасос","блок АБС","блок предохранителей","блок управления вентилятором","блок управления двигателем (ЭБУ)","блок управления парктроником","блок управления светом","главный тормозной цилиндр","головка блока цилиндров","датчик кислородный","дроссельная заслонка","замок багажника","замок зажигания","защита механизма МКПП","зеркало салона","капот","катушка зажигания","клапан электромагнитный","кнопка обогрева стекла","компрессор кондиционера","корпус воздушного фильтра","корпус термостата","крыло","мотор дворников","мотор печки","накладка на порог","ноускат","обшивка капота","панель приборов","петля капота","подкрылок","подрулевой переключатель","подушка безопасности пассажира","подушка двигателя","порог","привод","радиатор кондиционера","радиатор масляный","рулевая колонка","руль","стойка подвески","топливная рампа в сборе","трос кпп","трубка кондиционера","трубка сцепления","фара","фонарь в крыло","центральная консоль","шестерня коленвала","шкив коленвала","шланг системы охлаждения"]},{"category":"Ford Fusion","parts":["АКПП","Бачок гидроусилителя руля","Вентилятор охлаждения радиатора","Датчик давления масла ГУР","Дверь боковая","Замок ремня безопасности","Зеркало заднего вида боковое","Короб аккумулятора","Крюк замка капота","Кулиса МКПП","Маховик АКПП","Насос гидроусилителя руля","Парктроник","Стеклоподъемный механизм","бампер","бархотка ( молдинг стекла двери )","бачок расширительный","бензонасос","блок управления (печкой) климат контролем","блок управления двигателем (ЭБУ)","блок управления светом","датчик кислородный","домкрат","дроссельная заслонка","замок двери","замок зажигания","защита механизма МКПП","капот","клапан","компрессор кондиционера","корпус воздушного фильтра","кронштейн опоры","крыло","мотор печки","накладка на крыло","панель приборов","подкрылок","подрулевой переключатель","подушка безопасности пассажира","подушка двигателя","привод","рамка радиатора","ремень безопасности","руль","стабилизатор","стартер","топливная рампа в сборе","трос кпп","трубка гидроусилителя","усилитель бампера","фара","фонарь в крыло","шкив коленвала"]},{"category":"Ford GALAXY","parts":["Вентилятор охлаждения радиатора","Кулак поворотный","Маховик МКПП","Стекло двери","Форточка кузова","замок двери","крышка багажника","лонжерон","накладка на бампер","плата фонаря","радиатор охлаждения двигателя","руль","фонарь в крыло"]},{"category":"Ford Kuga","parts":["Датчик ускорения","Дефлектор радиатора","Заглушка рейлинга","Обшивка двери багажника","Разъем ( фишка )","Стеклоподъемный механизм","замок багажника","замок двери","замок капота","капот","ремень безопасности","спойлер","ступица","трубка кондиционера","фара противотуманная"]},{"category":"Ford Mondeo 3","parts":["АКПП","Блок розжига ксенона","Вентилятор охлаждения радиатора","Воздуховод салона","Датчик давления масла ГУР","Датчик дождя","Датчик температуры воздуха в салоне","Датчик температуры воздуха на улице","Дверь боковая","Двигатель в сборе","Декоративная крышка двигателя","Джойстик магнитолы","Замок ремня безопасности","Зеркало заднего вида боковое","Кулак поворотный","МКПП","Маховик АКПП","Молдинг крыши","Насос гидроусилителя руля","Патрубок интеркулера","Патрубок системы охлаждения","Петля крышки багажника","Плафон подсветки салона","Подушка безопасности в руль","Подушка безопасности в сиденье","Резонатор воздушного фильтра","Рейлинг","Стекло двери","Стеклоподъемный механизм","Суппорт тормозной","Фланец системы охлаждения","бампер","бархотка ( молдинг стекла двери )","бачок омывателя","бачок расширительный","бензонасос","блок предохранителей","блок управления (печкой) климат контролем","блок управления двигателем (ЭБУ)","блок управления светом","блок управления сидением","датчик абсолютного давления","датчик давления тормозной системы","датчик кислородный","двигатель","домкрат","дроссельная заслонка","замок багажника","замок двери","замок зажигания","защита бампера","защита двигателя","зеркало салона","капот","катушка зажигания","кнопка подогрева сидений","кнопки руля ( аудио )","коллектор впускной","комплект сцепления","компрессор кондиционера","корпус воздушного фильтра","крепление бампера","кронштейн опоры мкпп","крыло","крышка багажника","люк","магнитола","мотор печки","обшивка багажника","панель приборов","плата фонаря","подкрылок","подлокотник","подрулевой переключатель","подушка безопасности пассажира","привод","радиатор акпп","радиатор гидроусилителя","радиатор кондиционера","радиатор охлаждения двигателя","регулятор холостого хода","реле","ремень безопасности","решетка радиатора","руль","ручка двери внешняя","стартер","трос кпп","трубка кондиционера","трубка сцепления","трубка топливная","турбокомпрессор","фара","фара противотуманная","фонарь в крыло","шторка багажника"]},{"category":"Ford Mondeo 4","parts":["Кулак поворотный","Насос гидроусилителя руля","бампер","блок управления двигателем (ЭБУ)","главный тормозной цилиндр","замок двери","лонжерон","подушка безопасности пассажира","привод","трос кпп","усилитель бампера","шторка багажника"]},{"category":"Ford S-MAX","parts":["Дверь боковая","МКПП","Маховик МКПП","Подушка безопасности боковая","Подушка безопасности в руль","Суппорт тормозной","балка подвески","замок зажигания","капот","крыло","крышка багажника","ремень безопасности","руль"]}]},{"name":"Honda","models":[{"category":"Honda Civic","parts":["Крышка головки блока цилиндров","Подушка безопасности боковая"]}]},{"name":"Hyundai","models":[{"category":"Hyundai Getz","parts":["Блок управления стеклоподъемниками","Торпедо","лонжерон","ремень безопасности","трубка гидроусилителя","трубка кондиционера"]},{"category":"Hyundai Matrix","parts":["Насос гидроусилителя руля","Обшивка боковой двери","Подушка безопасности в сиденье","блок предохранителей","обшивка багажника","привод","ручка двери внешняя","стартер","турбокомпрессор"]},{"category":"Hyundai Tucson","parts":["накладка салона","подкрылок","топливная рампа в сборе","трос кпп","усилитель бампера"]},{"category":"Hyundai i30","parts":["Вентилятор охлаждения радиатора","радиатор кондиционера","радиатор охлаждения двигателя"]}]},{"name":"Kia","models":[{"category":"KIA Ceed","parts":["кронштейн усилителя бампера"]},{"category":"KIA Sportage","parts":["Шестерня распредвала"]},{"category":"Kia Rio","parts":["Вентилятор охлаждения радиатора","защита бампера","капот","радиатор охлаждения двигателя","рамка радиатора","фара"]}]},{"name":"MINI","models":[{"category":"MINI Cooper","parts":["ноускат"]}]},{"name":"Mazda","models":[{"category":"Mazda Mazda 3","parts":["Декоративная крышка двигателя","Подушка безопасности боковая","Шлейф-лента подушки безопасности","арка крыла","бензонасос","блок предохранителей","блок управления (печкой) климат контролем","датчик кислородный","порог","стойка подвески","трубка кондиционера"]},{"category":"Mazda Mazda 6","parts":["Подушка безопасности в руль","крыло"]}]},{"name":"Mercedes-Benz","models":[{"category":"Mercedes-Benz C-Class","parts":["Вентилятор охлаждения радиатора","бампер","интеркулер","капот","радиатор кондиционера","радиатор охлаждения двигателя","рамка радиатора","фара"]}]},{"name":"Mitsubishi","models":[{"category":"Mitsubishi ASX","parts":["Бак топливный","Балка продольная под ДВС","Блок Bluetooth","Блок управления парктрониками","Горловина топливного бака","Датчик сигнализации","Дверь боковая","Декоративная крышка двигателя","Дефлектор радиатора","Динамик высокочастотный","Замок ремня безопасности","Зеркало заднего вида боковое","Крышка клеммы АКБ","Кулак поворотный","МКПП","Маховик МКПП","Молдинг крыши","Обшивка боковой двери","Парктроник","Подушка безопасности боковая","Подушка безопасности в сиденье","Рамка радиатора верхняя","Рамка радиатора нижняя","Ручка КПП","Стекло двери","Стеклоподъемный механизм","Суппорт тормозной","Фаркоп","Форточка кузова","ЭУР Электро усилитель руля","бампер","бархотка ( молдинг стекла двери )","бачок омывателя","бензонасос","блок АБС","блок предохранителей","блок управления (печкой) климат контролем","блок управления двигателем (ЭБУ)","брызговики комплект","генератор","главный тормозной цилиндр","главный цилиндр сцепления","глушитель","датчик abs","двигатель","дроссельная заслонка","замок багажника","замок зажигания","защита бампера","защита двигателя","капот","катушка зажигания","клемма аккумулятора","кнопка открывания багажника","кнопка подогрева сидений","кнопки руля","кнопки руля ( аудио )","коллектор впускной","компрессор кондиционера","корпус воздушного фильтра","корректор фары","крыло","крышка багажника","личинка замка двери","мотор печки","накладка на крыло","накладка на кулису КПП","накладка на порог","обшивка капота","переключатель круиз-контроля","петля капота","подкрылок","подлокотник","подрулевой переключатель","подушка безопасности пассажира","пол багажника, фальшпол","полка багажника","привод","радиатор кондиционера","радиатор охлаждения двигателя","ремень безопасности","решетка радиатора","руль","ручка двери внешняя","стабилизатор","стартер","стойка подвески","стоп-сигнал","тройник радиатора","трос кпп","трубка кондиционера","усилитель бампера","фара","фонарь в крыло","фонарь в крышку багажника"]},{"category":"Mitsubishi Colt","parts":["Амортизатор крышки багажника","Вентилятор охлаждения радиатора","Выпускной коллектор","Датчик подушки безопасности","Докатка","Зеркало заднего вида боковое","Кнопка ПТФ","Кулак поворотный","Кулиса РКПП","Маховик МКПП","Молдинг крыши","Поводок щетки стеклоочистителя","Поддон двигателя","Подушка безопасности в руль","Стекло фары","Форточка кузова","Шлейф-лента подушки безопасности","бампер","бачок омывателя","бензонасос","блок АБС","блок управления (печкой) климат контролем","блок управления двигателем (ЭБУ)","бортовой компьютер","генератор","головка блока цилиндров","датчик кислородный","двигатель","дроссельная заслонка","замок зажигания","капот","клемма аккумулятора","кнопки руля ( аудио )","ковер багажника","компрессор кондиционера","корпус воздушного фильтра","крепление бампера","кронштейн фары","крыло","крышка багажника","магнитола","мотор дворников","мотор печки","панель приборов","повторитель в крыло","подкрылок","подушка безопасности пассажира","полка багажника","поршень","привод","рабочий цилиндр сцепления","радиатор кондиционера","радиатор охлаждения двигателя","рамка радиатора","ремень безопасности","руль","стойка подвески","трубка кондиционера","трубка сцепления","фара","фонарь в крыло"]},{"category":"Mitsubishi Lancer 10","parts":["Бак топливный","Балка подвески в сборе","Балка продольная под ДВС","Блок цилиндров","Вариатор (CVT)","Вентилятор охлаждения радиатора","Глушитель в сборе","Горловина топливного бака","Датчик дождя","Датчик подушки безопасности","Датчик положения распредвала","Дверь боковая","Декоративная крышка двигателя","Динамик высокочастотный","Диск тормозной","Докатка","Зеркало заднего вида боковое","Зеркальный элемент","Клапан VVT-i","Козырек солнцезащитный","Кронштейн двигателя","Крышка головки блока цилиндров","Кулак поворотный","МКПП","Масляный насос","Маховик МКПП","Насос гидроусилителя руля","Обшивка боковой двери","Патрубок системы охлаждения","Поддон двигателя","Подушка безопасности боковая","Подушка безопасности в руль","Подушка безопасности в сиденье","Рамка радиатора верхняя","Распорка кузова","Ручка КПП","Стекло двери","Стеклоподъемный механизм","Суппорт тормозной","Трос стояночного тормоза","Фонарь противотуманный","Шлейф-лента подушки безопасности","антенна","арка крыла","бампер","бархотка ( молдинг стекла двери )","бачок омывателя","бачок расширительный","блок AUX","блок АБС","блок комфорта","блок предохранителей","блок управления (печкой) климат контролем","блок управления двигателем (ЭБУ)","блок управления климат-контролем","брызговики комплект","ветровики комплект","генератор","главный тормозной цилиндр","глушитель","головка блока цилиндров","датчик кислородный","двигатель","домкрат","дроссельная заслонка","замок багажника","замок зажигания","защита двигателя","капот","катушка зажигания","клемма аккумулятора","кнопка аварийной сигнализации","кнопки руля ( аудио )","коленвал","коллектор впускной","компрессор кондиционера","корпус воздушного фильтра","корпус зеркала","крыло","крышка багажника","лобовина двигателя","магнитола","мотор печки","накладка на зеркало","накладка на магнитолу","накладка на порог","ограничитель двери","панель магнитолы","панель приборов","пепельница","подкрылок","подлокотник","подрамник ( балка )","подрулевой переключатель","подстаканник","подушка безопасности пассажира","подушка двигателя","пол багажника, фальшпол","полка багажника","порог","поршень","постель коленвала","привод","проводка руля","рабочий цилиндр сцепления","радиатор кондиционера","радиатор охлаждения двигателя","ремень безопасности","руль","рычаг подвески","скоба суппорта","спойлер","стабилизатор","стартер","стойка подвески","стоп-сигнал","топливная рампа в сборе","трапеция дворников","тройник радиатора","трос кпп","трубка кондиционера","усилитель бампера","фара","фара противотуманная","фары","фонарь в крыло","фонарь в крышку багажника","шкив коленвала"]},{"category":"Mitsubishi Lancer 9","parts":["АКПП","Балка продольная под ДВС","Блок управления стеклоподъемниками","Блок цилиндров","Вентилятор охлаждения радиатора","Выпускной коллектор","Датчик давления топлива","Датчик положения распредвала","Дверь боковая","Диск тормозной","Жгут проводки двигателя","Зеркало заднего вида боковое","Кнопка ПТФ","Кожух ремня ГРМ","Кронштейн гидроусилителя руля","Кронштейн двигателя","Крышка головки блока цилиндров","Кулак поворотный","Масляный насос","Маховик МКПП","Молдинг крыши","Насос гидроусилителя руля","Обшивка боковой двери","Петля крышки багажника","Поводок щетки стеклоочистителя","Поддон двигателя","Подиум госномера","Подушка безопасности в руль","Проводка ( коса )","Регулятор давления топлива","Ручка КПП","Ручка ручного тормоза","Стеклоподъемный механизм","Суппорт тормозной","Топливная форсунка","Торпедо","Тройник трубки топливной","Трубка системы охлаждения","Трубка системы охлаждения АКПП","Фонарь противотуманный","Шлейф-лента подушки безопасности","арка крыла","бампер","бархотка ( молдинг стекла двери )","бачок омывателя","бензонасос","блок АБС","блок комфорта","блок предохранителей","блок управления (печкой) климат контролем","блок управления вентилятором","блок управления светом","воздухозаборник","генератор","главный тормозной цилиндр","глушитель","головка блока цилиндров","датчик абсолютного давления","датчик детонации","датчик положения дроссельной заслонки","датчик положения коленвала","датчик положения селектора АКПП","датчик уровня топлива","двигатель","домкрат","дроссельная заслонка","замок багажника","замок двери","замок зажигания","защита двигателя","капот","катушка зажигания","клемма аккумулятора","кнопка подогрева сидений","коленвал","компрессор кондиционера","корпус воздушного фильтра","корректор фары","крепление аккумулятора","кронштейн опоры мкпп","крыло","крышка багажника","магнитола","механизм ручного тормоза","мотор печки","накладка на порог","обшивка багажника","обшивка крышки багажника","панель приборов","петля двери","подкрылок","подлокотник","подрамник ( балка )","подушка безопасности пассажира","подушка двигателя","пол багажника, фальшпол","поршень","привод","прикуриватель","проводка противотуманных фар","проводка фары","проводка фонаря","радиатор кондиционера","регулятор холостого хода","ремень безопасности","решетка радиатора","руль","ручка двери внешняя","скоба суппорта","стабилизатор","стартер","стойка подвески","топливная рампа в сборе","трос кпп","трубка кондиционера","трубка топливная","усилитель бампера","фара","фара противотуманная","фонарь в крыло","шестерня коленвала","шкив коленвала","шланг системы охлаждения"]},{"category":"Mitsubishi Outlander","parts":["Зеркальный элемент","Кулак поворотный","Повторитель поворота в зеркало","Суппорт тормозной","датчик abs","дроссельная заслонка","замок зажигания","кнопки руля ( аудио )","компрессор кондиционера","накладка на зеркало","переключатель круиз-контроля","порог","руль","рычаг подвески","ступица"]}]},{"name":"Nissan","models":[{"category":"Nissan Juke","parts":["Блок управления топливным насосом","Вентилятор охлаждения радиатора","Воздуховод воздушного фильтра","Горловина топливного бака","ДМРВ","Датчик давления компрессора кондиционера","Дверь боковая","Дефлектор радиатора","Динамик высокочастотный","Замок ремня безопасности","Клапан VVT-i","Крышка головки блока цилиндров","Кулиса МКПП","МКПП","Маховик МКПП","Обшивка боковой двери","Патрубок интеркулера","Патрубок системы охлаждения","Плафон подсветки салона","Подставка под аккумулятор","Подушка безопасности боковая","Подушка безопасности в руль","Подушка безопасности в сиденье","Потолок","Трос стояночного тормоза","Трубка турбокомпрессора (турбины)","Шлейф-лента подушки безопасности","Ящик для инструмента","антенна","балка подвески","бачок расширительный","бензонасос","блок АБС","блок предохранителей","блок управления двигателем (ЭБУ)","блок управления климат-контролем","генератор","датчик абсолютного давления","датчик кислородный","дроссельная заслонка","замок двери","замок зажигания","интеркулер","камера заднего вида","клапан электромагнитный","клемма аккумулятора","кнопки руля","кожух рулевой колонки","коллектор впускной","компрессор кондиционера","корпус воздушного фильтра","кронштейн опоры мкпп","кронштейн усилителя бампера","крыло","крышка багажника","мотор печки","накладка замка багажника","накладка на крыло","накладка на порог","ограничитель двери","панель приборов","патрубок воздушного фильтра","петля капота","планка под радиаторы (траверса)","подкрылок","подрулевой переключатель","подушка безопасности пассажира","подушка двигателя","пол багажника, фальшпол","полка багажника","привод","проводка фонаря","пружина подвески","радиатор кондиционера","радиатор масляный","радиатор охлаждения двигателя","реле","решетка радиатора","руль","стабилизатор","стартер","ступица","топливная рампа в сборе","трос кпп","трубка кондиционера","трубка сцепления","турбокомпрессор","усилитель бампера","фара","фара противотуманная","фонарь в крыло","шкив коленвала"]},{"category":"Nissan Murano","parts":["Вентилятор охлаждения радиатора","Гидроблок","Гидротрансформатор","ДМРВ","Датчик подушки безопасности","Диск тормозной","Заглушка рейлинга","Зеркало заднего вида боковое","Корпус КПП","Насос гидроусилителя руля","Омыватель фар","Поддон МКПП","Подушка безопасности боковая","Подушка безопасности в руль","Проводка ( коса )","Теплообменник АКПП","Трубка масляная","Усилитель звука","Шлейф-лента подушки безопасности","бампер","бачок расширительный","бензонасос","блок предохранителей","блок управления (печкой) климат контролем","воздухозаборник","генератор","датчик кислородный","датчик уровня топлива","двигатель","дроссельная заслонка","карданный вал","клемма аккумулятора","компрессор кондиционера","корпус воздушного фильтра","крышка багажника","мотор дворников","накладка на торпедо","панель приборов","подушка безопасности пассажира","подушка двигателя","привод","радиатор кондиционера","радиатор охлаждения двигателя","радиатор печки","раздаточная коробка","рамка радиатора","руль","стартер","трубка кондиционера","усилитель бампера","шторка багажника"]},{"category":"Nissan Note","parts":["Блок управления парктрониками","Вентилятор охлаждения радиатора","ДМРВ","Дверь боковая","Динамик высокочастотный","Зеркало заднего вида боковое","Кулак поворотный","МКПП","Механизм стояночного тормоза","Обшивка боковой двери","Подушка безопасности в руль","Подушка безопасности в сиденье","Рамка радиатора верхняя","Ручка двери багажника","Стеклоподъемный механизм","Шлейф-лента подушки безопасности","абсорбер бампера","антенна","бампер","бардачок","бачок омывателя","бачок расширительный","бензонасос","блок комфорта","блок предохранителей","блок управления (печкой) климат контролем","блок управления АКПП","блок управления двигателем (ЭБУ)","воздухозаборник","датчик кислородный","динамик","домкрат","дроссельная заслонка","замок багажника","замок зажигания","защита бампера","капот","клемма аккумулятора","кнопки руля","кнопки руля ( аудио )","компрессор кондиционера","корпус воздушного фильтра","корпус зеркала","крепление усилителя бампера","кронштейн опоры мкпп","кронштейн усилителя бампера","крыло","молдинг крышки багажника ( ручка крышки багажника)","мотор печки","накладка на бампер","накладка на крыло","накладка под фонарь","обшивка багажника","панель приборов","петля капота","подкрылок","подрамник ( балка )","подрулевой переключатель","пол багажника, фальшпол","полка багажника","привод","радиатор охлаждения двигателя","резистор печки","ремень безопасности","рулевой карданчик","руль","стартер","стойка подвески","трос кпп","трубка кондиционера","усилитель бампера","фара","фара противотуманная","фонарь в крыло"]},{"category":"Nissan Qashqai","parts":["Вентилятор охлаждения радиатора","ДМРВ","Дверь боковая","Декоративная крышка двигателя","Омыватель фар","Подушка безопасности в сиденье","Стеклоподъемный механизм","Трос стояночного тормоза","бампер","бачок омывателя","блок управления двигателем (ЭБУ)","датчик кислородный","датчик положения селектора АКПП","датчик уровня топлива","замок багажника","интеркулер","капот","корпус воздушного фильтра","кронштейн опоры мкпп","подлокотник","подрулевой переключатель","подушка двигателя","привод","радиатор охлаждения двигателя","рамка радиатора","резистор печки","стартер","трос кпп","усилитель бампера","фара","фара противотуманная","форсунка топливная"]},{"category":"Nissan X-Trail","parts":["ноускат"]}]},{"name":"Opel","models":[{"category":"Opel Astra","parts":["Подушка безопасности боковая","топливная рампа в сборе"]}]},{"name":"Peugeot","models":[{"category":"Peugeot 308","parts":["Вентилятор охлаждения радиатора","ЭУР Электро усилитель руля","бачок омывателя","блок АБС","крышка багажника","радиатор кондиционера","радиатор охлаждения двигателя","фонарь в крыло"]},{"category":"Peugeot PARTNER","parts":["капот","крыло"]},{"category":"Peugeot PARTNER TEPEE (B9)","parts":["Бак топливный","Блок старт-стоп","Маховик МКПП","РКПП","Регулятор давления топлива","Шлейф-лента подушки безопасности","бампер","блок управления АКПП","блок управления двигателем (ЭБУ)","клемма аккумулятора","мотор дворников","мотор печки","плата фонаря","подрамник ( балка )","подушка безопасности пассажира","радиатор кондиционера","селектор акпп","трубка топливная","турбокомпрессор","усилитель бампера"]}]},{"name":"Renault","models":[{"category":"Renault KANGOO","parts":["решетка радиатора"]},{"category":"Renault Megane 2","parts":["Поддон двигателя","Подставка под аккумулятор","Подушка безопасности боковая","Суппорт тормозной","Шлейф-лента подушки безопасности","антенна","бампер","блок управления двигателем (ЭБУ)","дроссельная заслонка","замок багажника","клемма аккумулятора","кнопки руля","крепление крыла","крыло","панель приборов","подкрылок","подушка двигателя","поршень","привод","радиатор кондиционера","трубка кондиционера","фара противотуманная","шкив коленвала","эмблема"]},{"category":"Renault SANDERO","parts":["Торпедо","генератор","решетка радиатора","рулевая рейка"]}]},{"name":"Subaru","models":[{"category":"Subaru Legacy","parts":["накладка на порог"]}]},{"name":"Toyota","models":[{"category":"Toyota Auris","parts":["ЭУР Электро усилитель руля","датчик кислородный","замок зажигания","радиатор охлаждения двигателя","спойлер"]},{"category":"Toyota Avensis","parts":["Балка подвески в сборе","Балка продольная под ДВС","Блок цилиндров","Вентилятор охлаждения радиатора","Воздуховод воздушного фильтра","Датчик дождя","Датчик ускорения","Дверь боковая","Декоративная крышка двигателя","Дефлектор воздушный","Дефлектор радиатора","Докатка","Зеркало заднего вида боковое","Зеркальный элемент","Клапан VVT-i","Кнопка открывания бензобака","Кулак поворотный","МКПП","Маховик МКПП","Молдинг крыши","Накладка замка капота","Накладка крышки багажника","Насос гидроусилителя руля","Патрубок системы охлаждения","Петля крышки багажника","Плафон подсветки салона","Повторитель поворота в зеркало","Поддон двигателя","Подставка под аккумулятор","Подушка безопасности боковая","Подушка безопасности в руль","Подушка безопасности в сиденье","Рамка радиатора верхняя","Резонатор воздушного фильтра","Резонатор глушителя","Рулевая тяга","Стеклоподъемный механизм","ТНВД","Трос стояночного тормоза","Цепь ГРМ","Шлейф-лента подушки безопасности","ЭУР Электро усилитель руля","бампер","бархотка ( молдинг стекла двери )","бачок омывателя","бензонасос","блок АБС","блок управления (печкой) климат контролем","блок управления двигателем (ЭБУ)","бортовой компьютер","брызговик","ветровики комплект","генератор","головка блока цилиндров","датчик давления тормозной системы","датчик кислородный","датчик курсовой устойчивости","датчик положения кузова","двигатель","домкрат","дроссельная заслонка","замок багажника","замок двери","замок зажигания","зеркало салона","капот","катушка зажигания","кнопка открывания багажника","кнопки руля","коленвал","коллектор впускной","комплект сцепления","компрессор кондиционера","корпус воздушного фильтра","корпус зеркала","крепление бампера","крыло","крышка багажника","магнитола","мотор печки","накладка на бампер","накладка на зеркало","накладка на кулису КПП","накладка на петлю багажника","накладка на порог","натяжитель приводного ремня","ноускат","ограничитель двери","петля двери","плата фонаря","подкрылок","подлокотник","подрамник ( балка )","подрулевой переключатель","подстаканник","подушка безопасности пассажира","подушка двигателя","поршень","привод","радиатор охлаждения двигателя","радиатор печки","рамка радиатора","ремень безопасности","решетка радиатора","руль","рычаг подвески","сервопривод заслонки печки","стабилизатор","стартер","стойка подвески","суппорта и диски","топливная рампа в сборе","трос кпп","трубка кондиционера","турбокомпрессор","усилитель бампера","фара","фара противотуманная","фонарь в крыло","шкив коленвала","шторка багажника","эмблема"]}]},{"name":"Volkswagen","models":[{"category":"Volkswagen GOLF 5","parts":["интеркулер","радиатор охлаждения двигателя"]},{"category":"Volkswagen GOLF 6","parts":["Зеркало заднего вида боковое","бампер","привод","радиатор охлаждения двигателя"]},{"category":"Volkswagen Passat","parts":["дроссельная заслонка"]},{"category":"Volkswagen Tiguan","parts":["Блок управления SRS","Блок управления мультимедией.","Блок управления парктрониками","Блок управления подвеской","ДМРВ","Датчик температуры выхлопных газов","Кулак поворотный","Маслоотделитель","Набор инструментов","Обшивка боковой двери","Патрубок интеркулера","Подушка МКПП","Подушка безопасности боковая","Подушка безопасности в руль","Проводка парктроника","Рейлинг","Стеклоподъемный механизм","Суппорт тормозной","Топливный насос","Шлейф-лента подушки безопасности","бампер","блок АБС","блок управления двигателем (ЭБУ)","дроссельная заслонка","клапан ЕГР","комплект сцепления","компрессор кондиционера","корпус масляного фильтра","магнитола","мотор дворников","панель приборов","привод","пружина подвески","радиатор кондиционера","радиатор охлаждения двигателя","руль","ручка двери внешняя","сервопривод заслонки печки","стабилизатор","стойка подвески","трос кпп","трубка топливная","турбокомпрессор","фара"]}]},{"name":"Volvo","models":[{"category":"Volvo S80","parts":["ноускат"]},{"category":"Volvo XC90","parts":["ноускат"]}]},{"name":"Škoda","models":[{"category":"Skoda Fabia","parts":["ЭУР Электро усилитель руля","крыло","рамка радиатора","фара"]}]}]};
+const ALL_PARTS = ["CD-чейнджер","АКПП","Амортизатор крышки багажника","Бак топливный","Балка подвески в сборе","Балка продольная под ДВС","Бардачок под очки","Бачок гидроусилителя руля","Блок Bluetooth","Блок розжига ксенона","Блок старт-стоп","Блок управления","Блок управления SRS","Блок управления мультимедией.","Блок управления парктрониками","Блок управления подвеской","Блок управления стеклоподъемниками","Блок управления топливным насосом","Блок цилиндров","Вакуумный насос тормозов","Вакуумный усилитель тормозов","Вариатор (CVT)","Вентилятор охлаждения радиатора","Воздуховод воздушного фильтра","Воздуховод салона","Выпускной коллектор","Гидроблок","Гидротрансформатор","Глушитель в сборе","Горловина топливного бака","ДМРВ","Датчик высоты дорожного просвета","Датчик давления в шинах","Датчик давления компрессора кондиционера","Датчик давления масла ГУР","Датчик давления топлива","Датчик дождя","Датчик подушки безопасности","Датчик положения распредвала","Датчик сигнализации","Датчик температуры воздуха в салоне","Датчик температуры воздуха на улице","Датчик температуры выхлопных газов","Датчик ускорения","Дверь боковая","Двигатель в сборе","Декоративная крышка двигателя","Дефлектор воздушный","Дефлектор радиатора","Джойстик магнитолы","Динамик высокочастотный","Диск тормозной","Докатка","Жгут проводки двигателя","Заглушка рейлинга","Замок ремня безопасности","Звуковой сигнал","Зеркало заднего вида боковое","Зеркальный элемент","Клапан VVT-i","Клапан паров топлива","Клапан продувки адсорбера","Кнопка ПТФ","Кнопка открывания бензобака","Кожух ремня ГРМ","Козырек солнцезащитный","Короб аккумулятора","Корпус КПП","Кронштейн гидроусилителя руля","Кронштейн двигателя","Крышка головки блока цилиндров","Крышка клеммы АКБ","Крюк замка капота","Кулак поворотный","Кулиса МКПП","Кулиса РКПП","Лючок топливного бака","МКПП","Маслоотделитель","Масляный насос","Маховик АКПП","Маховик МКПП","Механизм стояночного тормоза","Молдинг крыши","Набор инструментов","Накладка замка капота","Накладка крышки багажника","Насос гидроусилителя руля","Обшивка боковой двери","Обшивка двери багажника","Омыватель фар","Парктроник","Патрубок интеркулера","Патрубок системы охлаждения","Петля крышки багажника","Плафон подсветки салона","Поводок щетки стеклоочистителя","Повторитель поворота в зеркало","Поддон МКПП","Поддон двигателя","Подиум госномера","Подставка под аккумулятор","Подушка АКПП","Подушка МКПП","Подушка безопасности боковая","Подушка безопасности в руль","Подушка безопасности в сиденье","Потолок","Привод заслонки впускного коллектора","Проводка ( коса )","Проводка парктроника","РКПП","Разъем ( фишка )","Рамка радиатора верхняя","Рамка радиатора нижняя","Распорка кузова","Регулятор давления топлива","Резистор вентилятора охлаждения","Резонатор воздушного фильтра","Резонатор глушителя","Рейлинг","Реле накала свечей","Рулевая тяга","Ручка КПП","Ручка двери багажника","Ручка ручного тормоза","Сабвуфер","Стекло двери","Стекло фары","Стеклоподъемный механизм","Суппорт тормозной","ТНВД","Теплообменник АКПП","Топливная форсунка","Топливный насос","Торпедо","Тройник трубки топливной","Трос замка двери","Трос стояночного тормоза","Трубка масляная","Трубка системы охлаждения","Трубка системы охлаждения АКПП","Трубка турбокомпрессора (турбины)","Усилитель звука","Фаркоп","Фильтр топливный","Фланец системы охлаждения","Фонарь противотуманный","Форточка кузова","Цепь ГРМ","Шестерня распредвала","Шлейф-лента подушки безопасности","ЭУР Электро усилитель руля","Ящик для инструмента","абсорбер бампера","антенна","арка крыла","балка подвески","бампер","бардачок","бархотка ( молдинг стекла двери )","бачок омывателя","бачок расширительный","бензонасос","блок AUX","блок АБС","блок комфорта","блок предохранителей","блок управления (печкой) климат контролем","блок управления АКПП","блок управления вентилятором","блок управления двигателем (ЭБУ)","блок управления климат-контролем","блок управления парктроником","блок управления светом","блок управления сидением","бортовой компьютер","брызговик","брызговики комплект","ветровики комплект","воздухозаборник","генератор","главный тормозной цилиндр","главный цилиндр сцепления","глушитель","головка блока цилиндров","датчик abs","датчик абсолютного давления","датчик давления тормозной системы","датчик детонации","датчик кислородный","датчик курсовой устойчивости","датчик положения дроссельной заслонки","датчик положения коленвала","датчик положения кузова","датчик положения селектора АКПП","датчик уровня топлива","датчик холостого хода","двигатель","динамик","домкрат","дроссельная заслонка","замок багажника","замок двери","замок зажигания","замок капота","защита бампера","защита двигателя","защита механизма МКПП","зеркало салона","интеркулер","камера заднего вида","капот","карданный вал","катушка зажигания","клапан","клапан ЕГР","клапан электромагнитный","клемма аккумулятора","кнопка аварийной сигнализации","кнопка обогрева стекла","кнопка открывания багажника","кнопка подогрева сидений","кнопки руля","кнопки руля ( аудио )","ковер багажника","кожух рулевой колонки","коленвал","коллектор впускной","комплект сцепления","компрессор кондиционера","корпус воздушного фильтра","корпус зеркала","корпус масляного фильтра","корпус термостата","корректор фары","крепление аккумулятора","крепление бампера","крепление крыла","крепление усилителя бампера","крепление фары","кронштейн опоры","кронштейн опоры мкпп","кронштейн усилителя бампера","кронштейн фары","крыло","крышка багажника","личинка замка двери","лобовина двигателя","лонжерон","люк","магнитола","механизм ручного тормоза","молдинг крышки багажника ( ручка крышки багажника)","мотор дворников","мотор печки","накладка замка багажника","накладка на бампер","накладка на зеркало","накладка на крыло","накладка на кулису КПП","накладка на магнитолу","накладка на петлю багажника","накладка на порог","накладка на торпедо","накладка под фонарь","накладка салона","натяжитель приводного ремня","ноускат","обшивка багажника","обшивка капота","обшивка крышки багажника","ограничитель двери","осушитель кондиционера","панель магнитолы","панель приборов","папка под документы","патрубок воздушного фильтра","пепельница","переключатель круиз-контроля","петля двери","петля капота","планка под радиаторы (траверса)","плата фонаря","повторитель в крыло","подкрылок","подлокотник","подрамник ( балка )","подрулевой переключатель","подстаканник","подушка безопасности пассажира","подушка двигателя","пол багажника, фальшпол","полка багажника","порог","поршень","постель коленвала","привод","прикуриватель","проводка противотуманных фар","проводка руля","проводка фары","проводка фонаря","пружина подвески","рабочий цилиндр сцепления","радиатор акпп","радиатор гидроусилителя","радиатор кондиционера","радиатор масляный","радиатор охлаждения двигателя","радиатор печки","раздаточная коробка","рамка радиатора","регулятор холостого хода","редуктор","резистор печки","реле","ремень безопасности","решетка радиатора","ролик натяжной","рулевая колонка","рулевая рейка","рулевой карданчик","руль","ручка двери внешняя","рычаг подвески","селектор акпп","сервопривод заслонки печки","скоба буксировочная","скоба суппорта","спойлер","стабилизатор","стартер","стойка подвески","стоп-сигнал","ступица","суппорта и диски","термостат","топливная рампа","топливная рампа в сборе","трапеция дворников","тройник радиатора","трос кпп","трубка гидроусилителя","трубка кондиционера","трубка сцепления","трубка топливная","турбокомпрессор","усилитель бампера","фара","фара противотуманная","фары","фонарь в крыло","фонарь в крышку багажника","форсунка","форсунка топливная","центральная консоль","шестерня коленвала","шкив коленвала","шланг системы охлаждения","шторка багажника","эмблема"];
+
+let addedParts = [];
+let selectedCategory = '';
+let selectedPartName = '';
+let acIndex = -1;
+
+/* ═══════════════════════════════════════
+   PHONE MASK — completely rewritten
+   The key fix: strip "+7" text prefix BEFORE extracting digits,
+   so the "7" from country code is never counted as a subscriber digit.
+   ═══════════════════════════════════════ */
+function getPhoneDigits(value) {
+  var text = value || '';
+  // Remove +7 or 8 prefix from the TEXT, then extract digits
+  if (text.indexOf('+7') === 0) text = text.substring(2);
+  else if (text.indexOf('8') === 0 && text.replace(/[^\d]/g, '').length === 11) text = text.substring(1);
+  var digits = text.replace(/[^\d]/g, '');
+  return digits.substring(0, 10);
+}
+
+function formatPhone(digits) {
+  if (!digits || digits.length === 0) return '+7 ';
+  var s = '+7 (' + digits.substring(0, 3);
+  if (digits.length < 3) return s;
+  s += ') ' + digits.substring(3, 6);
+  if (digits.length > 6) s += '-' + digits.substring(6, 8);
+  if (digits.length > 8) s += '-' + digits.substring(8, 10);
+  return s;
+}
+
+function setupPhoneInput(el) {
+  // Store raw digits as data attribute to avoid parsing issues
+  el._digits = '';
+
+  el.addEventListener('keydown', function(e) {
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      e.preventDefault();
+      if (this._digits.length > 0) {
+        this._digits = this._digits.slice(0, -1);
+        this.value = this._digits.length > 0 ? formatPhone(this._digits) : '+7 ';
+      }
+      updateSubmitState();
+      updateProgress();
+      return;
+    }
+    // Allow only digit keys
+    if (e.key.length === 1 && /\d/.test(e.key) && this._digits.length < 10) {
+      e.preventDefault();
+      this._digits += e.key;
+      this.value = formatPhone(this._digits);
+      updateSubmitState();
+      updateProgress();
+      return;
+    }
+    // Allow navigation keys
+    if (['ArrowLeft','ArrowRight','Home','End','Tab'].includes(e.key)) return;
+    // Block everything else (except ctrl combos)
+    if (!e.ctrlKey && !e.metaKey) e.preventDefault();
+  });
+
+  el.addEventListener('paste', function(e) {
+    e.preventDefault();
+    var pasted = (e.clipboardData || window.clipboardData).getData('text');
+    var digits = getPhoneDigits(pasted);
+    if (digits.length > 0) {
+      this._digits = digits;
+      this.value = formatPhone(this._digits);
+      updateSubmitState();
+      updateProgress();
+    }
+  });
+
+  el.addEventListener('focus', function() {
+    if (!this.value || this.value.trim() === '') {
+      this.value = '+7 ';
+    }
+    setTimeout(function() { el.selectionStart = el.selectionEnd = el.value.length; }, 0);
+  });
+
+  el.addEventListener('blur', function() {
+    if (this._digits.length === 0) this.value = '';
+  });
+
+  // Prevent cursor from moving into +7 prefix
+  el.addEventListener('click', function() {
+    this.selectionStart = this.selectionEnd = this.value.length;
+  });
+}
+
+setupPhoneInput(document.getElementById('contactPhone'));
+setupPhoneInput(document.getElementById('contactPhoneAlt'));
+
+/* ══ CONTACT TYPE SWITCHING ══ */
+document.querySelectorAll('input[name="contactType"]').forEach(function(r) {
+  r.addEventListener('change', function() {
+    var isPhone = this.value === 'Телефон';
+    document.getElementById('contactBlockNick').style.display = isPhone ? 'none' : 'block';
+    document.getElementById('contactBlockPhone').style.display = isPhone ? 'block' : 'none';
+    // Update nick placeholder based on messenger
+    var nickInput = document.getElementById('contactNick');
+    var placeholders = { 'Telegram': '@username', 'WhatsApp': '@username', 'VK': 'vk.com/id или @ник', 'MAX': '@username' };
+    nickInput.placeholder = placeholders[this.value] || '@username';
+    updateSubmitState();
+    updateProgress();
+  });
+});
+
+function getContactValue() {
+  var type = document.querySelector('input[name="contactType"]:checked').value;
+  if (type === 'Телефон') {
+    var el = document.getElementById('contactPhone');
+    var d = (el && el._digits) ? el._digits : '';
+    return d.length === 10 ? '+7' + d : '';
+  } else {
+    var nick = document.getElementById('contactNick').value.trim();
+    var elAlt = document.getElementById('contactPhoneAlt');
+    var altD = (elAlt && elAlt._digits) ? elAlt._digits : '';
+    var phone = altD.length === 10 ? '+7' + altD : '';
+    // At least one must be filled
+    if (nick || phone) return nick || phone;
+    return '';
+  }
+}
+
+// Returns both contact fields for the payload
+function getContactDetails() {
+  var type = document.querySelector('input[name="contactType"]:checked').value;
+  if (type === 'Телефон') {
+    var el = document.getElementById('contactPhone');
+    var d = (el && el._digits) ? el._digits : '';
+    return { nick: '', phone: d.length === 10 ? '+7' + d : '' };
+  } else {
+    var nick = document.getElementById('contactNick').value.trim();
+    var elAlt = document.getElementById('contactPhoneAlt');
+    var altD = (elAlt && elAlt._digits) ? elAlt._digits : '';
+    var phone = altD.length === 10 ? '+7' + altD : '';
+    return { nick: nick, phone: phone };
+  }
+}
+
+/* ══ SIDE PROGRESS ══ */
+function updateProgress() {
+  var name = document.getElementById('clientName').value.trim();
+  var contact = getContactValue();
+  var hasCar = !!selectedCategory;
+  var hasParts = addedParts.length > 0;
+  var consent = document.getElementById('consentCheck').checked;
+
+  var step1 = !!(name && contact);
+  var step2 = hasCar;
+  var step3 = hasParts;
+  var step4 = step1 && step2 && step3 && consent;
+
+  var setCls = function(id, done, active) {
+    var el = document.getElementById(id);
+    el.className = 'sp-step' + (done ? ' done' : '') + (active ? ' active' : '');
+  };
+  setCls('ps1', step1, !step1);
+  setCls('ps2', step2, step1 && !step2);
+  setCls('ps3', step3, step1 && step2 && !step3);
+  setCls('ps4', step4, step1 && step2 && step3 && !step4);
+}
+
+/* ══ INIT ══ */
+document.addEventListener('DOMContentLoaded', function() {
+  populateBrands();
+  var d = new Date(); d.setMonth(d.getMonth() + 3);
+  document.getElementById('waitUntil').value = d.toISOString().slice(0, 10);
+  document.getElementById('waitUntil').min = new Date().toISOString().slice(0, 10);
+  updateProgress();
+});
+
+function populateBrands() {
+  var sel = document.getElementById('brandSelect');
+  catalog.brands.forEach(function(b) { var o = document.createElement('option'); o.value = b.name; o.textContent = b.name; sel.appendChild(o); });
+}
+
+/* ══ BRAND → MODEL ══ */
+document.getElementById('brandSelect').addEventListener('change', function() {
+  var brandName = this.value;
+  var modelSel = document.getElementById('modelSelect');
+  modelSel.innerHTML = '<option value="">Выберите</option>';
+  selectedCategory = '';
+  document.getElementById('partInput').value = ''; selectedPartName = '';
+  closeAutocomplete(); setPartFieldsEnabled(false);
+  if (!brandName) { modelSel.disabled = true; updateSubmitState(); updateProgress(); return; }
+  var brand = catalog.brands.find(function(b) { return b.name === brandName; });
+  if (!brand) return;
+  brand.models.forEach(function(m) {
+    var o = document.createElement('option'); o.value = m.category;
+    var display = m.category;
+    if (display.toLowerCase().indexOf(brandName.toLowerCase()) === 0) display = display.slice(brandName.length).trim();
+    o.textContent = display || m.category;
+    modelSel.appendChild(o);
+  });
+  modelSel.disabled = false;
+  if (brand.models.length === 1) { modelSel.value = brand.models[0].category; modelSel.dispatchEvent(new Event('change')); }
+  updateSubmitState(); updateProgress();
+});
+
+document.getElementById('modelSelect').addEventListener('change', function() {
+  selectedCategory = this.value;
+  document.getElementById('partInput').value = ''; selectedPartName = '';
+  closeAutocomplete();
+  if (!selectedCategory) { setPartFieldsEnabled(false); } else { setPartFieldsEnabled(true); }
+  updateSubmitState(); updateProgress();
+});
+
+function setPartFieldsEnabled(on) {
+  ['partInput','positionSelect','qtyInput','catNumInput','commentInput'].forEach(function(id) { document.getElementById(id).disabled = !on; });
+  updateAddBtnState();
+}
+
+/* ══ AUTOCOMPLETE — ALL_PARTS global ══ */
+var partInp = document.getElementById('partInput');
+var partDrop = document.getElementById('partDropdown');
+
+partInp.addEventListener('input', function() {
+  selectedPartName = '';
+  var query = this.value.trim().toLowerCase();
+  acIndex = -1;
+  if (!query) { closeAutocomplete(); updateAddBtnState(); return; }
+  var starts = [], contains = [];
+  ALL_PARTS.forEach(function(p) { var pl = p.toLowerCase(); if (pl.indexOf(query) === 0) starts.push(p); else if (pl.indexOf(query) > 0) contains.push(p); });
+  var matches = starts.concat(contains).slice(0, 15);
+  if (!matches.length) { closeAutocomplete(); updateAddBtnState(); return; }
+  partDrop.innerHTML = '';
+  matches.forEach(function(m) {
+    var div = document.createElement('div'); div.className = 'autocomplete-item';
+    div.innerHTML = highlightMatch(m, query);
+    div.addEventListener('mousedown', function(e) { e.preventDefault(); selectPart(m); });
+    partDrop.appendChild(div);
+  });
+  partDrop.classList.add('open');
+  updateAddBtnState();
+});
+
+partInp.addEventListener('keydown', function(e) {
+  var items = partDrop.querySelectorAll('.autocomplete-item');
+  if (!items.length) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); acIndex = Math.min(acIndex + 1, items.length - 1); hlAc(items); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); acIndex = Math.max(acIndex - 1, 0); hlAc(items); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (acIndex >= 0 && items[acIndex]) selectPart(items[acIndex].textContent); }
+  else if (e.key === 'Escape') closeAutocomplete();
+});
+partInp.addEventListener('blur', function() { setTimeout(closeAutocomplete, 150); });
+partInp.addEventListener('focus', function() { if (this.value.trim()) this.dispatchEvent(new Event('input')); });
+
+function hlAc(items) { items.forEach(function(it, i) { it.classList.toggle('active', i === acIndex); }); if (items[acIndex]) items[acIndex].scrollIntoView({ block: 'nearest' }); }
+function selectPart(name) { partInp.value = name; selectedPartName = name; closeAutocomplete(); updateAddBtnState(); }
+function closeAutocomplete() { partDrop.classList.remove('open'); partDrop.innerHTML = ''; acIndex = -1; }
+
+function highlightMatch(text, query) {
+  var idx = text.toLowerCase().indexOf(query);
+  if (idx === -1) return escHtml(text);
+  return escHtml(text.slice(0, idx)) + '<mark>' + escHtml(text.slice(idx, idx + query.length)) + '</mark>' + escHtml(text.slice(idx + query.length));
+}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ══ ADD PART ══ */
+function updateAddBtnState() {
+  var partText = document.getElementById('partInput').value.trim();
+  document.getElementById('addPartBtn').disabled = !selectedCategory || !partText;
+}
+
+document.getElementById('addPartBtn').addEventListener('click', function() {
+  var partText = selectedPartName || document.getElementById('partInput').value.trim();
+  if (!selectedCategory || !partText) return;
+  addedParts.push({
+    part_name: partText,
+    position: document.getElementById('positionSelect').value,
+    quantity: parseInt(document.getElementById('qtyInput').value) || 1,
+    catalog_number: document.getElementById('catNumInput').value.trim(),
+    comment: document.getElementById('commentInput').value.trim()
+  });
+  renderParts();
+  document.getElementById('partInput').value = '';
+  document.getElementById('positionSelect').value = '';
+  document.getElementById('qtyInput').value = '1';
+  document.getElementById('catNumInput').value = '';
+  document.getElementById('commentInput').value = '';
+  selectedPartName = ''; updateAddBtnState(); updateSubmitState(); updateProgress();
+  document.getElementById('partInput').focus();
+});
+
+function renderParts() {
+  var list = document.getElementById('partsList'); list.innerHTML = '';
+  addedParts.forEach(function(p, i) {
+    var chip = document.createElement('div'); chip.className = 'part-chip';
+    var bits = [p.position, p.catalog_number, p.comment].filter(Boolean);
+    var sub = bits.join(' \u00b7 ');
+    chip.innerHTML = '<div class="info"><strong>' + escHtml(p.part_name) + '</strong>' + (sub ? '<span>' + escHtml(sub) + '</span>' : '') + '</div><div class="qty">' + p.quantity + ' \u0448\u0442</div><button class="remove-part" data-idx="' + i + '" title="\u0423\u0434\u0430\u043b\u0438\u0442\u044c">\u00d7</button>';
+    list.appendChild(chip);
+  });
+  list.querySelectorAll('.remove-part').forEach(function(btn) { btn.addEventListener('click', function() { addedParts.splice(parseInt(btn.dataset.idx), 1); renderParts(); updateSubmitState(); updateProgress(); }); });
+}
+
+/* ══ VALIDATION ══ */
+function updateSubmitState() {
+  var name = document.getElementById('clientName').value.trim();
+  var contact = getContactValue();
+  var consent = document.getElementById('consentCheck').checked;
+  var hasCar = !!selectedCategory;
+  document.getElementById('submitBtn').disabled = !(name && contact && addedParts.length > 0 && consent && hasCar);
+}
+document.getElementById('clientName').addEventListener('input', function() { updateSubmitState(); updateProgress(); });
+document.getElementById('contactNick').addEventListener('input', function() { updateSubmitState(); updateProgress(); });
+document.getElementById('consentCheck').addEventListener('change', function() { updateSubmitState(); updateProgress(); });
+
+/* ══ SUBMIT ══ */
+document.getElementById('submitBtn').addEventListener('click', submitForm);
+
+async function submitForm() {
+  var clientName = document.getElementById('clientName').value.trim();
+  var contactType = document.querySelector('input[name="contactType"]:checked').value;
+  var contactDetails = getContactDetails();
+  var contact = contactDetails.nick || contactDetails.phone;
+  var waitUntil = document.getElementById('waitUntil').value;
+  var year = document.getElementById('yearInput').value;
+  var generation = document.getElementById('genSelect').value;
+  var restyling = document.getElementById('restylingSelect').value;
+  var vin = document.getElementById('vinInput').value.trim().toUpperCase();
+
+  if (!clientName || !contact || !addedParts.length) return;
+
+  var payload = {
+    token: FORM_TOKEN,
+    client_name: clientName, contact_type: contactType,
+    contact_nick: contactDetails.nick, contact_phone: contactDetails.phone,
+    contact: contact, wait_until: waitUntil,
+    category: selectedCategory, year: year || '', generation: generation, restyling: restyling, vin: vin,
+    parts: addedParts
+  };
+
+  if (!APPS_SCRIPT_URL) { console.log('DEMO payload:', JSON.stringify(payload, null, 2)); showSuccess(payload); return; }
+  showLoading(true);
+  try { await fetch(APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), mode: 'no-cors' }); showSuccess(payload); }
+  catch(e) { showToast('\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0451 \u0440\u0430\u0437.'); console.error(e); }
+  finally { showLoading(false); }
+}
+
+/* ══ SUCCESS / RESET ══ */
+function showSuccess(payload) {
+  showLoading(false);
+  document.getElementById('formScreen').classList.add('hidden');
+  document.getElementById('successScreen').classList.add('show');
+  document.getElementById('sideProgress').style.display = 'none';
+  var det = document.getElementById('successDetails');
+  var carDesc = payload.category;
+  if (payload.year) carDesc += ' ' + payload.year;
+  if (payload.generation) carDesc += ', пок. ' + payload.generation;
+  if (payload.restyling) carDesc += ' (' + payload.restyling + ')';
+
+  var h = '<div class="row"><span class="lbl">\u041a\u043b\u0438\u0435\u043d\u0442</span><span class="val">' + escHtml(payload.client_name) + '</span></div>';
+  var contactDisp = payload.contact_type + ': ';
+  if (payload.contact_nick && payload.contact_phone) contactDisp += payload.contact_nick + ', ' + payload.contact_phone;
+  else contactDisp += payload.contact_nick || payload.contact_phone;
+  h += '<div class="row"><span class="lbl">\u0421\u0432\u044f\u0437\u044c</span><span class="val">' + escHtml(contactDisp) + '</span></div>';
+  h += '<div class="row"><span class="lbl">\u0410\u0432\u0442\u043e</span><span class="val">' + escHtml(carDesc) + '</span></div>';
+  if (payload.vin) h += '<div class="row"><span class="lbl">VIN</span><span class="val">' + escHtml(payload.vin) + '</span></div>';
+  payload.parts.forEach(function(p) {
+    var label = escHtml(p.part_name) + (p.position ? ' (' + escHtml(p.position) + ')' : '');
+    h += '<div class="row"><span class="lbl">' + label + '</span><span class="val">\u00d7 ' + p.quantity + '</span></div>';
+  });
+  if (payload.wait_until) { var d = new Date(payload.wait_until); h += '<div class="row"><span class="lbl">\u0410\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e \u0434\u043e</span><span class="val">' + d.toLocaleDateString('ru-RU') + '</span></div>'; }
+  det.innerHTML = h;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetForm() {
+  document.getElementById('successScreen').classList.remove('show');
+  document.getElementById('formScreen').classList.remove('hidden');
+  document.getElementById('sideProgress').style.display = '';
+  document.getElementById('clientName').value = '';
+  document.getElementById('contactNick').value = '';
+  var ph1 = document.getElementById('contactPhone'); ph1.value = ''; ph1._digits = '';
+  var ph2 = document.getElementById('contactPhoneAlt'); ph2.value = ''; ph2._digits = '';
+  document.getElementById('ctTelegram').checked = true;
+  document.getElementById('contactBlockNick').style.display = 'block';
+  document.getElementById('contactBlockPhone').style.display = 'none';
+  document.getElementById('brandSelect').value = '';
+  document.getElementById('modelSelect').innerHTML = '<option value="">\u2014</option>'; document.getElementById('modelSelect').disabled = true;
+  document.getElementById('yearInput').value = '';
+  document.getElementById('genSelect').value = '';
+  document.getElementById('restylingSelect').value = '';
+  document.getElementById('vinInput').value = '';
+  document.getElementById('partInput').value = '';
+  document.getElementById('positionSelect').value = '';
+  document.getElementById('qtyInput').value = '1';
+  document.getElementById('catNumInput').value = '';
+  document.getElementById('commentInput').value = '';
+  document.getElementById('consentCheck').checked = false;
+  selectedCategory = ''; selectedPartName = ''; addedParts = [];
+  renderParts(); setPartFieldsEnabled(false); updateSubmitState(); updateProgress();
+  var d = new Date(); d.setMonth(d.getMonth() + 3);
+  document.getElementById('waitUntil').value = d.toISOString().slice(0, 10);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function showLoading(on) { document.getElementById('loadingOverlay').classList.toggle('show', on); }
+function showToast(msg) { var t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(function() { t.classList.remove('show'); }, 3500); }
+</script>
+</body>
+</html>
