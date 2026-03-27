@@ -20,7 +20,7 @@ from datetime import datetime, date
 
 # ─── Настройки из переменных окружения (GitHub Secrets) ───
 
-FEED_URL = os.environ.get("FEED_URL", "https://baz-on.ru/export/c1326/5edf4/razborangar-socposter.csv")
+FEED_URL = os.environ.get("FEED_URL", "https://baz-on.ru/export/c1326/2b944/razborangar-drom.csv")
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 GOOGLE_SHEETS_ID = os.environ["GOOGLE_SHEETS_ID"]
@@ -111,12 +111,14 @@ def batch_update_cells(service, updates):
     ).execute()
 
 
+PRODUCT_URL_BASE = "https://razbor-angar.ru/p"
+
 # ═══════════════════════════════════════════
-# CSV-фид наличия
+# CSV-фид наличия (новый формат — drom)
 # ═══════════════════════════════════════════
 
 def download_feed():
-    """Скачивает CSV-фид, возвращает список товаров в наличии."""
+    """Скачивает CSV-фид (drom-формат), возвращает список товаров в наличии."""
     print(f"Downloading feed from {FEED_URL}...")
     resp = urllib.request.urlopen(FEED_URL)
     raw = resp.read().decode("cp1251")
@@ -124,16 +126,47 @@ def download_feed():
 
     items = []
     for row in reader:
-        if row.get("available", "").strip().lower() == "true":
-            items.append({
-                "id": row.get("id", "").strip(),
-                "category": row.get("category", "").strip(),
-                "name": row.get("name", "").strip(),
-                "price": row.get("price", "").strip(),
-                "url": row.get("url", "").strip(),
-                "description": row.get("description", "").strip().split("\n")[0],  # первая строка
-                "vendorCode": row.get("vendorCode", "").strip(),
-            })
+        if row.get("Статус", "").strip() != "В наличии":
+            continue
+
+        item_id = row.get("Артикул", "").strip()
+
+        # Собираем позицию из структурированных полей
+        pos_parts = []
+        pz = row.get("Перед/Зад", "").strip()
+        lr = row.get("Лев/Прав", "").strip()
+        if pz:
+            pos_parts.append("передний" if "перед" in pz.lower() else "задний")
+        if lr:
+            pos_parts.append("левый" if "лев" in lr.lower() else "правый")
+        feed_position = " ".join(pos_parts)
+
+        # Краткое описание для Telegram: кузов, год
+        desc_parts = []
+        if row.get("Кузов", "").strip():
+            desc_parts.append(row["Кузов"].strip())
+        if row.get("Год", "").strip():
+            desc_parts.append(row["Год"].strip())
+        short_desc = ", ".join(desc_parts)
+
+        # category = "Марка Модель" для совместимости с заявками
+        brand = row.get("Марка", "").strip()
+        model = row.get("Модель", "").strip()
+        category = f"{brand} {model}".strip()
+
+        items.append({
+            "id": item_id,
+            "category": category,
+            "name": row.get("Наименование", "").strip(),
+            "price": row.get("Цена", "").strip(),
+            "url": f"{PRODUCT_URL_BASE}{item_id}",
+            "short_desc": short_desc,
+            "position": feed_position,
+            "vendor_codes": row.get("Номер", "").strip(),
+            "brand": brand,
+            "model": model,
+            "year": row.get("Год", "").strip(),
+        })
 
     print(f"Feed loaded: {len(items)} items available")
     return items
@@ -143,44 +176,10 @@ def download_feed():
 # Матчинг
 # ═══════════════════════════════════════════
 
-def parse_feed_position(description):
-    """
-    Извлекает позицию из первой строки description.
-    Возвращает нормализованную строку или пустую если позиции нет.
-    Примеры: 'перед. прав.' → 'передний правый', 'задн. лев.' → 'задний левый'
-    """
-    import re
-    desc = description.lower()
-
-    # Маппинг сокращений из фида на нормализованные значения
-    front = bool(re.search(r'перед\.', desc))
-    rear = bool(re.search(r'задн\.', desc))
-    left = bool(re.search(r'лев\.', desc))
-    right = bool(re.search(r'прав\.', desc))
-
-    parts = []
-    if front:
-        parts.append("передний")
-    elif rear:
-        parts.append("задний")
-    if left:
-        parts.append("левый")
-    elif right:
-        parts.append("правый")
-
-    return " ".join(parts)
-
-
 def position_matches(order_position, feed_position):
     """
     Проверяет совместимость позиции заявки и товара из фида.
-
-    Логика:
-    - Клиент не указал позицию → показываем всё
-    - У товара нет позиции → показываем всегда (деталь без стороны)
-    - Клиент указал 'Передний' → подходит 'передний', 'передний левый', 'передний правый'
-    - Клиент указал 'Передний правый' → подходит только 'передний правый'
-    - Клиент указал 'Левый' → подходит 'левый', 'передний левый', 'задний левый'
+    Позиция из фида уже нормализована: 'передний правый', 'задний', '' и т.д.
     """
     if not order_position:
         return True
@@ -190,27 +189,23 @@ def position_matches(order_position, feed_position):
     op = order_position.lower()
     fp = feed_position.lower()
 
-    # Точное совпадение
     if op == fp:
         return True
-
-    # Клиент указал только направление (передний/задний) — подходит любая сторона этого направления
     if op in ("передний", "задний"):
         return fp.startswith(op)
-
-    # Клиент указал только сторону (левый/правый) — подходит любое направление этой стороны
     if op in ("левый", "правый"):
         return fp.endswith(op)
 
     return False
 
 
-def find_matches(order_category, order_part_name, order_position, excluded_ids_str, feed_items):
+def find_matches(order_category, order_part_name, order_position, order_catalog_number, excluded_ids_str, feed_items):
     """
-    Ищет совпадения по category + name в фиде.
-    Фильтрует по позиции (если указана).
+    Ищет совпадения в фиде. Два режима:
+    1. Если есть каталожный номер — ищет по нему среди всех vendor_codes товара
+    2. Иначе — по category + name + position
+
     Исключает товары из excluded_ids.
-    Возвращает список совпавших товаров.
     """
     excluded = set()
     if excluded_ids_str:
@@ -220,14 +215,24 @@ def find_matches(order_category, order_part_name, order_position, excluded_ids_s
                 excluded.add(eid)
 
     matches = []
+    cat_num = order_catalog_number.strip().lower() if order_catalog_number else ""
+
     for item in feed_items:
         if item["id"] in excluded:
             continue
+
+        # Режим 1: матч по каталожному номеру (если клиент указал)
+        if cat_num:
+            vendor_codes = [c.strip().lower() for c in item["vendor_codes"].split(",") if c.strip()]
+            if cat_num in vendor_codes:
+                if position_matches(order_position, item["position"]):
+                    matches.append(item)
+            continue
+
+        # Режим 2: матч по category + name + position
         if (item["category"].lower() == order_category.lower() and
                 item["name"].lower() == order_part_name.lower()):
-            # Проверяем позицию
-            feed_pos = parse_feed_position(item["description"])
-            if position_matches(order_position, feed_pos):
+            if position_matches(order_position, item["position"]):
                 matches.append(item)
 
     return matches
@@ -321,6 +326,8 @@ def main():
         wait_until = get_cell(row, COL["wait_until"])
         excluded_ids = get_cell(row, COL["excluded_ids"])
 
+        catalog_number = get_cell(row, COL["catalog_number"])
+
         # Проверяем просрочку
         if wait_until:
             try:
@@ -331,7 +338,7 @@ def main():
                 pass
 
         # Ищем совпадения в фиде
-        matches = find_matches(category, part_name, position, excluded_ids, feed_items)
+        matches = find_matches(category, part_name, position, catalog_number, excluded_ids, feed_items)
 
         if matches:
             updates.append({"row": i, "col": COL["status"], "value": "Найдено — связаться"})
@@ -350,8 +357,11 @@ def main():
             part_block = f"🔔 {part_display}\n"
             for m in matches:
                 price_str = f"{m['price']} ₽" if m["price"] else "цена не указана"
-                desc_short = m["description"][:80]
-                part_block += f"• <a href=\"{m['url']}\">{desc_short}</a>\n  {price_str}\n"
+                short_desc = m.get("short_desc", "")
+                if short_desc:
+                    part_block += f"• {m['name']} ({short_desc}) — {price_str}\n  {m['url']}\n"
+                else:
+                    part_block += f"• {m['name']} — {price_str}\n  {m['url']}\n"
 
             clients[client_key].append(part_block)
 
