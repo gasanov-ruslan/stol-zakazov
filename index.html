@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Стол заказов Авторазбора Ангар</title>
+<title>Стол заказов — Разбор Ангар</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -211,11 +211,8 @@
         <input type="radio" name="waitPeriod" id="wp6" value="6"><label class="pill" for="wp6">6 мес</label>
         <input type="radio" name="waitPeriod" id="wp12" value="12"><label class="pill" for="wp12">12 мес</label>
       </div>
-      <div class="pill-group" style="margin-top:8px;">
-        <input type="radio" name="waitPeriod" id="wpCustom" value="custom">
-        <label class="pill" for="wpCustom" style="flex:1;text-align:center;">Указать свою дату</label>
-      </div>
-      <input type="date" id="waitCustomDate" style="display:none;margin-top:8px;" placeholder="Выберите дату">
+      <input type="date" id="waitCustomDate" style="margin-top:8px;">
+      <div class="field-hint">Или укажите свой срок заявки</div>
       <input type="hidden" id="waitUntil">
     </div>
   </div>
@@ -506,38 +503,31 @@ document.addEventListener('DOMContentLoaded', function() {
 /* ══ WAIT PERIOD PILLS ══ */
 function updateWaitDate() {
   var selected = document.querySelector('input[name="waitPeriod"]:checked');
-  var customDateEl = document.getElementById('waitCustomDate');
   var hiddenEl = document.getElementById('waitUntil');
   var displayEl = document.getElementById('waitDisplay');
 
-  if (selected.value === 'custom') {
-    customDateEl.style.display = 'block';
-    if (!customDateEl.value) {
-      // Auto-open the date picker on iOS/Android
-      setTimeout(function() {
-        try { customDateEl.showPicker(); } catch(e) { customDateEl.focus(); }
-      }, 100);
-    }
-    if (customDateEl.value) {
-      hiddenEl.value = customDateEl.value;
-      displayEl.textContent = new Date(customDateEl.value).toLocaleDateString('ru-RU');
-    } else {
-      hiddenEl.value = '';
-      displayEl.textContent = '—';
-    }
-  } else {
-    customDateEl.style.display = 'none';
+  if (selected) {
     var months = parseInt(selected.value);
     var d = new Date(); d.setMonth(d.getMonth() + months);
     hiddenEl.value = d.toISOString().slice(0, 10);
     displayEl.textContent = d.toLocaleDateString('ru-RU');
+    document.getElementById('waitCustomDate').value = '';
+  }
+}
+
+function onCustomDateChange() {
+  var customVal = document.getElementById('waitCustomDate').value;
+  if (customVal) {
+    document.getElementById('waitUntil').value = customVal;
+    document.getElementById('waitDisplay').textContent = new Date(customVal).toLocaleDateString('ru-RU');
+    document.querySelectorAll('input[name="waitPeriod"]').forEach(function(r) { r.checked = false; });
   }
 }
 
 document.querySelectorAll('input[name="waitPeriod"]').forEach(function(r) {
   r.addEventListener('change', updateWaitDate);
 });
-document.getElementById('waitCustomDate').addEventListener('change', updateWaitDate);
+document.getElementById('waitCustomDate').addEventListener('change', onCustomDateChange);
 document.getElementById('waitCustomDate').min = new Date().toISOString().slice(0, 10);
 
 function populateBrands() {
