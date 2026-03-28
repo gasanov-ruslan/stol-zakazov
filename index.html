@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Стол заказов — Разбор Ангар</title>
+<title>Стол заказов Авторазбора Ангар</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -150,7 +150,7 @@
 
 <div class="header">
   <h1>Стол заказов Авторазбора Ангар</h1>
-  <p>Внимательно заполните форму. Когда деталь появится, мы вам сообщим о наличии и цене до того, как выгрузим на Авито, Дром и другие площадки.</p>
+  <p>Внимательно заполните форму. Когда деталь появится, мы вам сообщим в приоритетном порядке до выгрузки на площадки.</p>
 </div>
 
 <!-- ═══ SIDE PROGRESS ═══ -->
@@ -215,7 +215,7 @@
         <input type="radio" name="waitPeriod" id="wpCustom" value="custom">
         <label class="pill" for="wpCustom" style="flex:1;text-align:center;">Указать свою дату</label>
       </div>
-      <input type="date" id="waitCustomDate" style="display:none;margin-top:8px;">
+      <input type="date" id="waitCustomDate" style="display:none;margin-top:8px;" placeholder="Выберите дату">
       <input type="hidden" id="waitUntil">
     </div>
   </div>
@@ -512,6 +512,12 @@ function updateWaitDate() {
 
   if (selected.value === 'custom') {
     customDateEl.style.display = 'block';
+    if (!customDateEl.value) {
+      // Auto-open the date picker on iOS/Android
+      setTimeout(function() {
+        try { customDateEl.showPicker(); } catch(e) { customDateEl.focus(); }
+      }, 100);
+    }
     if (customDateEl.value) {
       hiddenEl.value = customDateEl.value;
       displayEl.textContent = new Date(customDateEl.value).toLocaleDateString('ru-RU');
