@@ -381,7 +381,7 @@ def main():
 
         p_range = price_range(matches)
 
-        part_block = f"🔔 <b>{part_display}</b>\n"
+        part_block = f"<b>{order_id}</b> · {part_display}\n"
         for m in matches:
             price_str = f"{m['price']} ₽" if m["price"] else "цена не указана"
             part_block += f"  · {price_str} — {m['url']}\n"
@@ -396,6 +396,8 @@ def main():
         batch_update_cells(service, updates)
 
     print(f"Results: {len(clients)} new matches, {total_need_contact} need contact, {total_active} active")
+    print(f"DEBUG SELLER_TAGS: '{SELLER_TAGS}' len={len(SELLER_TAGS)}")
+    print(f"DEBUG SHEETS_URL: '{SHEETS_URL}' len={len(SHEETS_URL)}")
 
     if not clients:
         msg = f"Сегодня новых совпадений нет.\n\n{closing}"
