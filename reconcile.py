@@ -53,14 +53,13 @@ COL = {
     "status": 17,
     "matched_at": 18,
     "excluded_ids": 19,
-    "matched_ids": 20,  # Колонка U — скрипт дополняет, не перезаписывает
+    "matched_ids": 20,
 }
 
-DATA_START_ROW = 4  # строки 1-3: заголовки, описания, пример
+DATA_START_ROW = 4
 
 PRODUCT_URL_BASE = "https://razbor-angar.ru/p"
 
-# Динамическое заверение по дням недели
 CLOSING_BY_WEEKDAY = {
     0: "Хорошего понедельника! ✌️",
     1: "Продуктивного вторника! ✌️",
@@ -90,16 +89,14 @@ def get_sheets_service():
 
 
 def read_orders(service):
-    """Читает все строки из листа «Заявки» начиная с DATA_START_ROW."""
     result = service.spreadsheets().values().get(
         spreadsheetId=GOOGLE_SHEETS_ID,
-        range=f"Заявки!A{DATA_START_ROW}:U",  # A–U включая matched_ids
+        range=f"Заявки!A{DATA_START_ROW}:U",
     ).execute()
     return result.get("values", [])
 
 
 def batch_update_cells(service, updates):
-    """Пакетное обновление ячеек. updates = [{"row": 0, "col": 0, "value": "..."}]"""
     data = []
     for u in updates:
         col_letter = chr(ord("A") + u["col"])
@@ -233,7 +230,6 @@ def get_cell(row, col_idx, default=""):
 
 
 def price_range(matches):
-    """Возвращает строку диапазона цен или одну цену."""
     prices = [m["price_val"] for m in matches if m["price_val"] is not None]
     if not prices:
         return None
@@ -245,7 +241,6 @@ def price_range(matches):
 
 
 def average_price(matches):
-    """Возвращает среднюю цену по позициям или None."""
     prices = [m["price_val"] for m in matches if m["price_val"] is not None]
     if not prices:
         return None
@@ -253,7 +248,6 @@ def average_price(matches):
 
 
 def merge_matched_ids(existing_str, new_ids):
-    """Дополняет matched_ids новыми ID, не затирая старые."""
     existing = set()
     if existing_str:
         for eid in existing_str.split(","):
@@ -316,23 +310,16 @@ def main():
     print(f"Orders loaded: {len(rows)} rows")
 
     updates = []
-
-    # Группировка новых совпадений по клиенту для сообщения
     clients = {}
 
-    # Счётчики по всему файлу
-    total_active = 0        # все не финальные статусы
-    total_need_contact = 0  # статус «Найдено — связаться» по всему файлу
-
+    total_active = 0
+    total_need_contact = 0
     FINAL_STATUSES = {"Продано", "Отказ", "Просрочено"}
-
-    # Суммируем среднюю цену по новым совпадениям для выручки
     today_avg_sum = 0.0
 
     for i, row in enumerate(rows):
         status = get_cell(row, COL["status"])
 
-        # Считаем счётчики по всему файлу
         if status not in FINAL_STATUSES and status:
             total_active += 1
         if status == "Найдено — связаться":
@@ -341,23 +328,22 @@ def main():
         if status != "Ждёт деталь":
             continue
 
-        order_id        = get_cell(row, COL["id"])
-        client_name     = get_cell(row, COL["client_name"])
-        contact_type    = get_cell(row, COL["contact_type"])
-        contact_nick    = get_cell(row, COL["contact_nick"])
-        contact_phone   = get_cell(row, COL["contact_phone"])
-        category        = get_cell(row, COL["category"])
-        year            = get_cell(row, COL["year"])
-        generation      = get_cell(row, COL["generation"])
-        restyling       = get_cell(row, COL["restyling"])
-        part_name       = get_cell(row, COL["part_name"])
-        position        = get_cell(row, COL["position"])
-        wait_until      = get_cell(row, COL["wait_until"])
-        excluded_ids    = get_cell(row, COL["excluded_ids"])
-        catalog_number  = get_cell(row, COL["catalog_number"])
+        order_id             = get_cell(row, COL["id"])
+        client_name          = get_cell(row, COL["client_name"])
+        contact_type         = get_cell(row, COL["contact_type"])
+        contact_nick         = get_cell(row, COL["contact_nick"])
+        contact_phone        = get_cell(row, COL["contact_phone"])
+        category             = get_cell(row, COL["category"])
+        year                 = get_cell(row, COL["year"])
+        generation           = get_cell(row, COL["generation"])
+        restyling            = get_cell(row, COL["restyling"])
+        part_name            = get_cell(row, COL["part_name"])
+        position             = get_cell(row, COL["position"])
+        wait_until           = get_cell(row, COL["wait_until"])
+        excluded_ids         = get_cell(row, COL["excluded_ids"])
+        catalog_number       = get_cell(row, COL["catalog_number"])
         existing_matched_ids = get_cell(row, COL["matched_ids"])
 
-        # Проверяем просрочку
         if wait_until:
             try:
                 if date.fromisoformat(wait_until) < date.today():
@@ -371,7 +357,6 @@ def main():
         if not matches:
             continue
 
-        # Обновляем статус, matched_at, matched_ids
         updates.append({"row": i, "col": COL["status"], "value": "Найдено — связаться"})
         updates.append({"row": i, "col": COL["matched_at"], "value": today})
 
@@ -379,15 +364,12 @@ def main():
         merged_ids = merge_matched_ids(existing_matched_ids, new_ids)
         updates.append({"row": i, "col": COL["matched_ids"], "value": merged_ids})
 
-        # Считаем среднюю цену по заявке для выручки сегодня
         avg = average_price(matches)
         if avg:
             today_avg_sum += avg
 
-        # Обновляем счётчик — эта заявка переходит в «Найдено — связаться»
         total_need_contact += 1
 
-        # Группируем для сообщения
         client_key = (client_name, contact_type, contact_nick, contact_phone, category, year, generation, restyling)
 
         if client_key not in clients:
@@ -402,25 +384,20 @@ def main():
         part_block = f"🔔 <b>{part_display}</b>\n"
         for m in matches:
             price_str = f"{m['price']} ₽" if m["price"] else "цена не указана"
-            short_desc = m.get("short_desc", "")
-            if short_desc:
-                part_block += f"  · {price_str} — {m['url']}\n"
-            else:
-                part_block += f"  · {price_str} — {m['url']}\n"
+            part_block += f"  · {price_str} — {m['url']}\n"
 
         if p_range:
             part_block += f"  Примерная стоимость детали: {p_range}\n"
 
         clients[client_key].append(part_block)
 
-    # Применяем обновления
     if updates:
         print(f"Applying {len(updates)} updates...")
         batch_update_cells(service, updates)
 
     print(f"Results: {len(clients)} new matches, {total_need_contact} need contact, {total_active} active")
-
-    # ─── Формируем сообщение ───
+    print(f"DEBUG SELLER_TAGS: '{SELLER_TAGS}' len={len(SELLER_TAGS)}")
+    print(f"DEBUG SHEETS_URL: '{SHEETS_URL}' len={len(SHEETS_URL)}")
 
     if not clients:
         msg = f"Сегодня новых совпадений нет.\n\n{closing}"
@@ -430,10 +407,8 @@ def main():
 
     lines = []
 
-    # Приветствие
     lines.append(f"<b>Всем привет!</b> Для {len(clients)} клиентов появились детали, они их ждут. Свяжитесь с ними сегодня! 🚗")
 
-    # Блоки по клиентам
     for client_key, parts in clients.items():
         client_name, contact_type, contact_nick, contact_phone, category, year, generation, restyling = client_key
 
@@ -464,7 +439,6 @@ def main():
         for part_block in parts:
             lines.append(part_block)
 
-    # Выручка сегодня
     lines.append("")
     lines.append("─ ─ ─")
     lines.append("")
@@ -472,22 +446,19 @@ def main():
         revenue_str = f"{int(today_avg_sum):,}".replace(",", " ")
         lines.append(f"Потенциальная выручка при продаже сегодня: ~<b>{revenue_str} ₽</b>")
 
-    # Итоговый блок
     lines.append("")
     lines.append("= = =")
     lines.append("")
     lines.append(f"Всего актуальных заявок: {total_active}")
     lines.append(f"Нужно связаться с: <b>{total_need_contact}</b>")
 
-if SHEETS_URL:
+    if SHEETS_URL:
         lines.append(f"\n<a href=\"{SHEETS_URL}\">Перейти в стол заказов</a>")
-    # Теги продавцов
-    print(f"DEBUG SELLER_TAGS: '{SELLER_TAGS}' len={len(SELLER_TAGS)}")
+
     if SELLER_TAGS:
         tags = " ".join(t.strip() for t in SELLER_TAGS.split(",") if t.strip())
         lines.append(f"\n{tags}")
 
-    # Заверение
     lines.append(f"\n{closing}")
 
     full_message = "\n".join(lines)
