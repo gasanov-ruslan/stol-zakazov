@@ -479,10 +479,10 @@ def main():
     lines.append(f"Всего актуальных заявок: {total_active}")
     lines.append(f"Нужно связаться с: <b>{total_need_contact}</b>")
 
-    if SHEETS_URL:
+if SHEETS_URL:
         lines.append(f"\n<a href=\"{SHEETS_URL}\">Перейти в стол заказов</a>")
-
     # Теги продавцов
+    print(f"DEBUG SELLER_TAGS: '{SELLER_TAGS}' len={len(SELLER_TAGS)}")
     if SELLER_TAGS:
         tags = " ".join(t.strip() for t in SELLER_TAGS.split(",") if t.strip())
         lines.append(f"\n{tags}")
