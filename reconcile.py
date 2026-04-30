@@ -176,6 +176,8 @@ def download_feed():
 def position_matches(order_position, feed_position):
     if not order_position:
         return True
+    if order_position in ("Любой", "Не важно"):
+        return True
     if not feed_position:
         return True
     op = order_position.lower()
