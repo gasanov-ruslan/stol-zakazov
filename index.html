@@ -59,6 +59,7 @@
 
   label { display: block; font-size: 0.8rem; font-weight: 500; color: var(--text); margin-bottom: 6px; }
   label .optional { color: var(--text-muted); font-weight: 400; }
+  label .required-mark { color: var(--brand); font-weight: 700; margin-left: 2px; }
   .field { margin-bottom: 16px; }
   .field:last-child { margin-bottom: 0; }
 
@@ -69,6 +70,7 @@
   }
   input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(60,180,50,0.12); }
   select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6560' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  select.placeholder-shown { color: var(--text-muted); }
   textarea { resize: vertical; min-height: 56px; }
   input::placeholder, textarea::placeholder { color: var(--border); }
   select:disabled, input:disabled, textarea:disabled { background: #f9f7f4; color: var(--text-muted); cursor: not-allowed; }
@@ -275,25 +277,27 @@
       <div class="field-hint" style="margin-top:6px;">• Добавляйте по одной детали за раз</div>
       <div class="field-hint">• Используйте названия из каталога: «фара противотуманная», а не «туманки»</div>
     </div>
-    <div class="field-row">
-      <div class="field">
-        <label for="positionSelect">Расположение</label>
-        <select id="positionSelect" disabled>
-          <option value="">— Не важно</option>
-          <option value="Передний">Передний</option>
-          <option value="Задний">Задний</option>
-          <option value="Левый">Левый</option>
-          <option value="Правый">Правый</option>
-          <option value="Передний левый">Передний левый</option>
-          <option value="Передний правый">Передний правый</option>
-          <option value="Задний левый">Задний левый</option>
-          <option value="Задний правый">Задний правый</option>
-        </select>
-      </div>
-      <div class="field" style="max-width:100px;">
-        <label for="qtyInput">Кол-во</label>
-        <input type="number" id="qtyInput" value="1" min="1" max="99" disabled>
-      </div>
+    <div class="field">
+      <label for="positionSelect">Расположение<span class="required-mark">*</span></label>
+      <select id="positionSelect" disabled>
+        <option value="" disabled selected>Выберите расположение</option>
+        <option value="Любой">У этой детали нет стороны</option>
+        <option value="Не важно">Не важно — подойдёт любая</option>
+        <option value="" disabled>─────────────</option>
+        <option value="Передний">Передний</option>
+        <option value="Задний">Задний</option>
+        <option value="Левый">Левый</option>
+        <option value="Правый">Правый</option>
+        <option value="Передний левый">Передний левый</option>
+        <option value="Передний правый">Передний правый</option>
+        <option value="Задний левый">Задний левый</option>
+        <option value="Задний правый">Задний правый</option>
+      </select>
+      <div class="field-hint">Если у детали нет сторон (например, ручка КПП) — выберите «У этой детали нет стороны». Если нужна любая (например, оба крыла) — «Не важно».</div>
+    </div>
+    <div class="field" style="max-width:140px;">
+      <label for="qtyInput">Количество</label>
+      <input type="number" id="qtyInput" value="1" min="1" max="99" disabled>
     </div>
     <div class="field">
       <label for="catNumInput">Каталожный номер <span class="optional">(если знаете)</span></label>
@@ -632,22 +636,26 @@ function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 /* ══ ADD PART ══ */
 function updateAddBtnState() {
   var partText = document.getElementById('partInput').value.trim();
-  document.getElementById('addPartBtn').disabled = !selectedCategory || !partText;
+  var positionVal = document.getElementById('positionSelect').value;
+  document.getElementById('addPartBtn').disabled = !selectedCategory || !partText || !positionVal;
 }
+
+document.getElementById('positionSelect').addEventListener('change', updateAddBtnState);
 
 document.getElementById('addPartBtn').addEventListener('click', function() {
   var partText = selectedPartName || document.getElementById('partInput').value.trim();
-  if (!selectedCategory || !partText) return;
+  var positionVal = document.getElementById('positionSelect').value;
+  if (!selectedCategory || !partText || !positionVal) return;
   addedParts.push({
     part_name: partText,
-    position: document.getElementById('positionSelect').value,
+    position: positionVal,
     quantity: parseInt(document.getElementById('qtyInput').value) || 1,
     catalog_number: document.getElementById('catNumInput').value.trim(),
     comment: document.getElementById('commentInput').value.trim()
   });
   renderParts();
   document.getElementById('partInput').value = '';
-  document.getElementById('positionSelect').value = '';
+  document.getElementById('positionSelect').selectedIndex = 0;
   document.getElementById('qtyInput').value = '1';
   document.getElementById('catNumInput').value = '';
   document.getElementById('commentInput').value = '';
@@ -662,7 +670,9 @@ function renderParts() {
   var list = document.getElementById('partsList'); list.innerHTML = '';
   addedParts.forEach(function(p, i) {
     var chip = document.createElement('div'); chip.className = 'part-chip';
-    var bits = [p.position, p.catalog_number, p.comment].filter(Boolean);
+    // Не показывать "Любой" / "Не важно" в чипе как сторону — это не позиция, а её отсутствие
+    var positionDisplay = (p.position && p.position !== 'Любой' && p.position !== 'Не важно') ? p.position : '';
+    var bits = [positionDisplay, p.catalog_number, p.comment].filter(Boolean);
     var sub = bits.join(' \u00b7 ');
     chip.innerHTML = '<div class="info"><strong>' + escHtml(p.part_name) + '</strong>' + (sub ? '<span>' + escHtml(sub) + '</span>' : '') + '</div><div class="qty">' + p.quantity + ' \u0448\u0442</div><button class="remove-part" data-idx="' + i + '" title="\u0423\u0434\u0430\u043b\u0438\u0442\u044c">\u00d7</button>';
     list.appendChild(chip);
@@ -734,7 +744,8 @@ function showSuccess(payload) {
   h += '<div class="row"><span class="lbl">\u0410\u0432\u0442\u043e</span><span class="val">' + escHtml(carDesc) + '</span></div>';
   if (payload.vin) h += '<div class="row"><span class="lbl">VIN</span><span class="val">' + escHtml(payload.vin) + '</span></div>';
   payload.parts.forEach(function(p) {
-    var label = escHtml(p.part_name) + (p.position ? ' (' + escHtml(p.position) + ')' : '');
+    var positionShown = (p.position && p.position !== 'Любой' && p.position !== 'Не важно') ? ' (' + escHtml(p.position) + ')' : '';
+    var label = escHtml(p.part_name) + positionShown;
     h += '<div class="row"><span class="lbl">' + label + '</span><span class="val">\u00d7 ' + p.quantity + '</span></div>';
   });
   if (payload.wait_until) { var d = new Date(payload.wait_until); h += '<div class="row"><span class="lbl">\u0410\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e \u0434\u043e</span><span class="val">' + d.toLocaleDateString('ru-RU') + '</span></div>'; }
@@ -760,7 +771,7 @@ function resetForm() {
   document.getElementById('restylingSelect').value = '';
   document.getElementById('vinInput').value = '';
   document.getElementById('partInput').value = '';
-  document.getElementById('positionSelect').value = '';
+  document.getElementById('positionSelect').selectedIndex = 0;
   document.getElementById('qtyInput').value = '1';
   document.getElementById('catNumInput').value = '';
   document.getElementById('commentInput').value = '';
